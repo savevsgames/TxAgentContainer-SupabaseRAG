@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 import uuid
 
 from embedder import Embedder
+from llm import LLMHandler
 from auth import get_user_id, get_auth_token, validate_token
 
 # Load environment variables
@@ -32,14 +33,15 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict to your frontend URL
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Initialize embedder
+# Initialize services
 embedder = Embedder()
+llm_handler = LLMHandler()
 
 # Define request and response models
 class DocumentRequest(BaseModel):
@@ -198,7 +200,7 @@ async def chat(
     Generate a response based on a query and document context.
     
     This endpoint performs similarity search to find relevant documents,
-    then generates a response based on the query and context.
+    then generates a response using an LLM based on the query and context.
     """
     logger.info(f"Chat request received from user {user_id}")
     
@@ -217,12 +219,14 @@ async def chat(
                 status="no_results"
             )
         
-        # In a real implementation, you would use these docs with an LLM
-        # For now, we'll return a placeholder response with the sources
-        context = "\n".join([doc["content"] for doc in similar_docs])
+        # Generate response using LLM
+        response = await llm_handler.generate_response(
+            query=request.query,
+            context=similar_docs,
+            temperature=request.temperature
+        )
         
-        response = f"Based on the documents I've found, I can provide information related to your query. Here's what I found: {context[:100]}..."
-        
+        # Format sources for response
         sources = [
             {
                 "content": doc["content"][:200] + "...",
