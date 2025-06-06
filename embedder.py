@@ -11,6 +11,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from supabase import create_client, Client
 from dotenv import load_dotenv
 import json
+from utils import with_retry, DocumentProcessingError, EmbeddingError, StorageError, validate_file_type
 
 # Load environment variables
 load_dotenv()
@@ -173,7 +174,7 @@ class Embedder:
             logger.error(f"Error getting job status: {str(e)}")
             raise
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    @with_retry(retries=3, delay=1.0, backoff=2.0, exceptions=(Exception,))
     def _download_file(self, file_path: str, jwt: Optional[str] = None) -> bytes:
         """
         Download a file from Supabase Storage.
@@ -197,6 +198,7 @@ class Embedder:
             logger.error(f"Error downloading file {file_path}: {str(e)}")
             raise
 
+    @with_retry(retries=2, delay=1.0, backoff=2.0, exceptions=(DocumentProcessingError,))
     def _extract_text_from_pdf(self, content: bytes) -> str:
         """
         Extract text from PDF content.
@@ -207,18 +209,16 @@ class Embedder:
         Returns:
             Extracted text as string
         """
-        logger.info("Extracting text from PDF")
-        text = ""
-        
         try:
             with fitz.open(stream=content, filetype="pdf") as pdf:
+                text = ""
                 for page in pdf:
                     text += page.get_text()
-            return text
+                return text
         except Exception as e:
-            logger.error(f"Error extracting text from PDF: {str(e)}")
-            raise  # Now propagating the error instead of returning empty string
+            raise DocumentProcessingError(f"Error extracting text from PDF: {str(e)}")
 
+    @with_retry(retries=2, delay=1.0, backoff=2.0, exceptions=(DocumentProcessingError,))
     def _extract_text_from_docx(self, content: bytes) -> str:
         """
         Extract text from DOCX content.
@@ -229,17 +229,14 @@ class Embedder:
         Returns:
             Extracted text as string
         """
-        logger.info("Extracting text from DOCX")
-        text = ""
-        
         try:
             doc = docx.Document(io.BytesIO(content))
+            text = ""
             for para in doc.paragraphs:
                 text += para.text + "\n"
             return text
         except Exception as e:
-            logger.error(f"Error extracting text from DOCX: {str(e)}")
-            raise  # Now propagating the error instead of returning empty string
+            raise DocumentProcessingError(f"Error extracting text from DOCX: {str(e)}")
 
     def _split_text(self, text: str) -> List[str]:
         """
@@ -262,7 +259,7 @@ class Embedder:
         logger.info(f"Created {len(chunks)} chunks")
         return chunks
 
-    @torch.no_grad()
+    @with_retry(retries=2, delay=1.0, backoff=2.0, exceptions=(EmbeddingError,))
     def _create_embedding(self, text: str) -> List[float]:
         """
         Create embedding for a text chunk using BioBERT.
@@ -273,79 +270,73 @@ class Embedder:
         Returns:
             Embedding vector as list of floats
         """
-        # Tokenize and prepare input
-        inputs = self.tokenizer(text, return_tensors="pt", 
-                               max_length=max_tokens, 
-                               padding="max_length", 
-                               truncation=True).to(device)
-        
-        # Get model output
-        outputs = self.model(**inputs)
-        
-        # Use CLS token embedding as the sentence embedding
-        embeddings = outputs.last_hidden_state[:, 0, :].cpu().numpy()[0].tolist()
-        
-        return embeddings
+        try:
+            inputs = self.tokenizer(text, return_tensors="pt",
+                                  max_length=max_tokens,
+                                  padding="max_length",
+                                  truncation=True).to(device)
+            outputs = self.model(**inputs)
+            embeddings = outputs.last_hidden_state[:, 0, :].cpu().numpy()[0].tolist()
+            return embeddings
+        except Exception as e:
+            raise EmbeddingError(f"Error creating embedding: {str(e)}")
 
     def process_document(self, file_path: str, metadata: Dict[str, Any], jwt: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        Process a document by downloading, extracting text, chunking, and embedding.
-        
-        Args:
-            file_path: Path to the file in Supabase Storage
-            metadata: Metadata for the document
-            jwt: Optional JWT token for authenticated operations
-            
-        Returns:
-            List of document chunks with embeddings and metadata
-        """
+        """Process a document by downloading, extracting text, chunking, and embedding."""
         logger.info(f"Processing document: {file_path}")
         
-        # Download file
-        content = self._download_file(file_path, jwt)
+        # Validate file type
+        if not validate_file_type(file_path):
+            raise DocumentProcessingError(f"Unsupported file type: {file_path}")
         
-        # Extract text based on file extension
-        text = ""
         try:
+            # Download file
+            content = self._download_file(file_path, jwt)
+            
+            # Extract text based on file extension
+            text = ""
             if file_path.endswith(".pdf"):
                 text = self._extract_text_from_pdf(content)
             elif file_path.endswith(".docx"):
                 text = self._extract_text_from_docx(content)
-            elif file_path.endswith(".txt") or file_path.endswith(".md"):
+            elif file_path.endswith((".txt", ".md")):
                 text = content.decode("utf-8")
-            else:
-                raise ValueError(f"Unsupported file type: {file_path}")
+            
+            if not text.strip():
+                raise DocumentProcessingError(f"No text extracted from document: {file_path}")
+            
+            # Split text into chunks
+            chunks = self._split_text(text)
+            
+            # Create embeddings for each chunk
+            document_chunks = []
+            for i, chunk in enumerate(chunks):
+                try:
+                    embedding = self._create_embedding(chunk)
+                    document_chunk = {
+                        "content": chunk,
+                        "embedding": embedding,
+                        "metadata": {
+                            **metadata,
+                            "chunk_index": i,
+                            "total_chunks": len(chunks),
+                            "source_file": file_path
+                        }
+                    }
+                    document_chunks.append(document_chunk)
+                except EmbeddingError as e:
+                    logger.error(f"Error embedding chunk {i}: {str(e)}")
+                    # Continue with next chunk
+                    continue
+            
+            if not document_chunks:
+                raise DocumentProcessingError("Failed to create any valid document chunks")
+            
+            logger.info(f"Created {len(document_chunks)} document chunks with embeddings")
+            return document_chunks
         except Exception as e:
-            logger.error(f"Error extracting text: {str(e)}")
+            logger.error(f"Error processing document: {str(e)}")
             raise
-        
-        if not text:
-            raise ValueError(f"No text extracted from document: {file_path}")
-        
-        # Split text into chunks
-        chunks = self._split_text(text)
-        
-        # Create embeddings for each chunk
-        document_chunks = []
-        for i, chunk in enumerate(chunks):
-            embedding = self._create_embedding(chunk)
-            
-            # Create document chunk with metadata
-            document_chunk = {
-                "content": chunk,
-                "embedding": embedding,
-                "metadata": {
-                    **metadata,
-                    "chunk_index": i,
-                    "total_chunks": len(chunks),
-                    "source_file": file_path
-                }
-            }
-            
-            document_chunks.append(document_chunk)
-            
-        logger.info(f"Created {len(document_chunks)} document chunks with embeddings")
-        return document_chunks
 
     def store_embeddings(self, document_chunks: List[Dict[str, Any]], user_id: str, jwt: Optional[str] = None) -> List[str]:
         """
