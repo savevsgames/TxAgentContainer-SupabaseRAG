@@ -1,0 +1,43 @@
+# 🤖 Bolt Prompt Strategy: Refactor & Remote Embedding
+
+## 🎯 Mission
+
+Instruct Bolt to help you offload embedding and document processing from your Render backend into your RunPod-hosted GPU container (`agent-pod/`).
+
+---
+
+## ⚙️ Example Prompts
+
+### 🔧 Embedder Refactor
+```
+Refactor backend/app/embedder.py into agent-pod/app/embedder.py.
+Make it use environment variables for model, Supabase keys, and pgvector connection.
+```
+
+### 🚀 Build agent-pod/embed endpoint
+```
+Create a FastAPI POST /embed route that downloads a document from Supabase using a signed URL, extracts the text (PDF/DOCX), embeds it with BioBERT, and stores the result in Supabase using pgvector.
+```
+
+### 🧪 Testing and Return Format
+```
+The /embed endpoint should return job_id, status, and metadata. If it fails, it should return status='error' and log the traceback.
+```
+
+---
+
+## ✅ Success Checklist
+
+- [ ] `agent-pod/app/embedder.py` handles all extraction + embedding
+- [ ] `agent-pod/main.py` exposes `/embed` and `/chat`
+- [ ] Backend calls pod for embedding jobs (via `requests.post`)
+- [ ] Supabase table `embedding_jobs` updated correctly
+- [ ] Bolt follows prompt format with file paths and minimal nesting
+
+---
+
+## 💬 Optional Prompts
+
+- Add retry logic to text extraction in agent-pod
+- Add logging when jobs fail and mark them in Supabase
+- Add support for markdown/txt upload parsing
