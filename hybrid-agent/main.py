@@ -25,9 +25,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("txagent")
 
-# SECURITY WARNING: Enhanced debug logging enabled
-logger.warning("🚨 SECURITY WARNING: Enhanced debug logging enabled for JWT troubleshooting!")
-
 # Log system startup
 request_logger.log_system_event("startup", {
     "model": os.getenv("MODEL_NAME", "dmis-lab/biobert-v1.1"),
@@ -98,7 +95,7 @@ class HealthResponse(BaseModel):
     device: str = os.getenv("DEVICE", "cuda")
     version: str = "1.0.0"
 
-# Middleware to log all requests with enhanced auth debugging
+# Middleware to log all requests
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
@@ -338,7 +335,8 @@ async def chat(
         similar_docs = embedder.similarity_search(
             query=request.query,
             user_id=user_id,
-            top_k=request.top_k
+            top_k=request.top_k,
+            jwt=token
         )
         
         if not similar_docs:
