@@ -113,12 +113,13 @@ def decode_jwt(token: str) -> Dict:
             logger.warning("⚠️ Token has no audience claim")
         
         # Now attempt verified decode with audience validation
-        logger.info("🔍 Attempting verified decode with audience validation...")
+        # 🔥 FIX: Use list format for audience - this is more robust with PyJWT
+        logger.info("🔍 Attempting verified decode with audience validation (list format)...")
         payload = jwt.decode(
             token,
             JWT_SECRET,
             algorithms=["HS256"],
-            audience="authenticated",  # 🔥 FIX: Validate expected audience
+            audience=["authenticated"],  # 🔥 FIX: Use list format instead of string
             options={"verify_signature": True}
         )
         
@@ -134,6 +135,8 @@ def decode_jwt(token: str) -> Dict:
         logger.error(f"❌ JWT InvalidAudienceError: {str(e)}")
         logger.error(f"❌ Exception details: {repr(e)}")
         logger.error("❌ Token audience does not match expected 'authenticated'")
+        logger.error(f"❌ Expected audience: ['authenticated']")
+        logger.error(f"❌ Token audience claim: {jwt.decode(token, options={'verify_signature': False}).get('aud', 'MISSING')}")
         raise AuthError("Invalid token audience")
     except jwt.InvalidSignatureError as e:
         logger.error(f"❌ JWT InvalidSignatureError: {str(e)}")
