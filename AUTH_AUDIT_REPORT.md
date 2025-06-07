@@ -73,7 +73,7 @@ find . -type f \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.tsx" 
 
 [Search results will be appended below]
 
-gregc@DESKTOP-FMTNKI6 MINGW64 /h/IntelliJProjects/Bolt_Hackathon_App/Hybrid_TxAgent_Docker_Container/TxAgentContainer-SupabaseRAG/hybrid-agent (main)
+user@DESKTOP-FMTNKI6 MINGW64 /h/IntelliJProjects/Bolt_Hackathon_App/Hybrid_TxAgent_Docker_Container/TxAgentContainer-SupabaseRAG/hybrid-agent (main)
 $ find . -type f \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.tsx" -o -name "*.json" \) -exec grep -l -i "jwt\|auth\|token\|audience\|verify" {} \;
 ./auth.py
 ./embedder.py
@@ -83,10 +83,10 @@ $ find . -type f \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.tsx
 ./tests/test_embedder.py
 ./utils.py
 
-gregc@DESKTOP-FMTNKI6 MINGW64 /h/IntelliJProjects/Bolt_Hackathon_App/Hybrid_TxAgent_Docker_Container/TxAgentContainer-SupabaseRAG/hybrid-agent (main)
+user@DESKTOP-FMTNKI6 MINGW64 /h/IntelliJProjects/Bolt_Hackathon_App/Hybrid_TxAgent_Docker_Container/TxAgentContainer-SupabaseRAG/hybrid-agent (main)
 $ find . -type f \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.tsx" \) -exec grep -n -i "verify.*aud\|audience.*false\|aud.*false\|verify_aud" {} \;
 
-gregc@DESKTOP-FMTNKI6 MINGW64 /h/IntelliJProjects/Bolt_Hackathon_App/Hybrid_TxAgent_Docker_Container/TxAgentContainer-SupabaseRAG/hybrid-agent (main)
+user@DESKTOP-FMTNKI6 MINGW64 /h/IntelliJProjects/Bolt_Hackathon_App/Hybrid_TxAgent_Docker_Container/TxAgentContainer-SupabaseRAG/hybrid-agent (main)
 $ find . -type f \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.tsx" \) -exec grep -n -A5 -B5 "jwt\.decode\|jwt\.verify\|supabase.*auth\|createClient" {} \;
 72-    
 73-    try:
