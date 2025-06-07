@@ -136,7 +136,12 @@ def decode_jwt(token: str) -> Dict:
         logger.error(f"❌ Exception details: {repr(e)}")
         logger.error("❌ Token audience does not match expected 'authenticated'")
         logger.error(f"❌ Expected audience: ['authenticated']")
-        logger.error(f"❌ Token audience claim: {jwt.decode(token, options={'verify_signature': False}).get('aud', 'MISSING')}")
+        # Safe way to get audience without re-validation
+        try:
+            unverified = jwt.decode(token, options={'verify_signature': False})
+            logger.error(f"❌ Token audience claim: {unverified.get('aud', 'MISSING')}")
+        except:
+            logger.error("❌ Could not extract audience from token")
         raise AuthError("Invalid token audience")
     except jwt.InvalidSignatureError as e:
         logger.error(f"❌ JWT InvalidSignatureError: {str(e)}")
