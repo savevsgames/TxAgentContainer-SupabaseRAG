@@ -47,6 +47,7 @@ class JWTPayload(BaseModel):
     sub: str  # user_id
     email: Optional[str] = None
     role: str = "authenticated"
+    aud: str = "authenticated"  # Added audience field
     exp: int
 
 
@@ -105,12 +106,19 @@ def decode_jwt(token: str) -> Dict:
             logger.info(f"⏰ Token iat: {iat_time} ({iat_datetime} UTC)")
             logger.info(f"⏰ Time since issued: {time_since_issued} seconds")
         
-        # Now attempt verified decode
-        logger.info("🔍 Attempting verified decode...")
+        # Check audience claim
+        if 'aud' in unverified_payload:
+            logger.info(f"🔍 Token audience: {unverified_payload['aud']}")
+        else:
+            logger.warning("⚠️ Token has no audience claim")
+        
+        # Now attempt verified decode with audience validation
+        logger.info("🔍 Attempting verified decode with audience validation...")
         payload = jwt.decode(
             token,
             JWT_SECRET,
             algorithms=["HS256"],
+            audience="authenticated",  # 🔥 FIX: Validate expected audience
             options={"verify_signature": True}
         )
         
@@ -122,6 +130,11 @@ def decode_jwt(token: str) -> Dict:
         logger.error(f"❌ JWT ExpiredSignatureError: {str(e)}")
         logger.error(f"❌ Exception details: {repr(e)}")
         raise AuthError("Token has expired")
+    except jwt.InvalidAudienceError as e:
+        logger.error(f"❌ JWT InvalidAudienceError: {str(e)}")
+        logger.error(f"❌ Exception details: {repr(e)}")
+        logger.error("❌ Token audience does not match expected 'authenticated'")
+        raise AuthError("Invalid token audience")
     except jwt.InvalidSignatureError as e:
         logger.error(f"❌ JWT InvalidSignatureError: {str(e)}")
         logger.error(f"❌ Exception details: {repr(e)}")
