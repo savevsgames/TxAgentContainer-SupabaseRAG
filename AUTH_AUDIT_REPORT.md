@@ -72,3 +72,55 @@ find . -type f \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.tsx" 
 ## Search Results
 
 [Search results will be appended below]
+
+gregc@DESKTOP-FMTNKI6 MINGW64 /h/IntelliJProjects/Bolt_Hackathon_App/Hybrid_TxAgent_Docker_Container/TxAgentContainer-SupabaseRAG/hybrid-agent (main)
+$ find . -type f \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.tsx" -o -name "*.json" \) -exec grep -l -i "jwt\|auth\|token\|audience\|verify" {} \;
+./auth.py
+./embedder.py
+./llm.py
+./main.py
+./schemas.py
+./tests/test_embedder.py
+./utils.py
+
+gregc@DESKTOP-FMTNKI6 MINGW64 /h/IntelliJProjects/Bolt_Hackathon_App/Hybrid_TxAgent_Docker_Container/TxAgentContainer-SupabaseRAG/hybrid-agent (main)
+$ find . -type f \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.tsx" \) -exec grep -n -i "verify.*aud\|audience.*false\|aud.*false\|verify_aud" {} \;
+
+gregc@DESKTOP-FMTNKI6 MINGW64 /h/IntelliJProjects/Bolt_Hackathon_App/Hybrid_TxAgent_Docker_Container/TxAgentContainer-SupabaseRAG/hybrid-agent (main)
+$ find . -type f \( -name "*.py" -o -name "*.js" -o -name "*.ts" -o -name "*.tsx" \) -exec grep -n -A5 -B5 "jwt\.decode\|jwt\.verify\|supabase.*auth\|createClient" {} \;
+72-    
+73-    try:
+74-        # 🔍 STEP 1: Decode without verification to inspect the token
+75-        logger.info("🔍 DECODE_JWT: STEP 1 - Unverified decode for inspection")
+76-        unverified_header = jwt.get_unverified_header(token)
+77:        unverified_payload = jwt.decode(token, options={"verify_signature": False})
+78-
+79-        logger.info(f"🔍 DECODE_JWT: Unverified header: {unverified_header}")
+80-        logger.info(f"🔍 DECODE_JWT: Unverified payload: {unverified_payload}")
+81-
+82-        # Check timing claims
+--
+119-            "options": {"verify_signature": True}
+120-        }
+121-        logger.info(f"🔍 DECODE_JWT: Verified decode parameters: {decode_params}")
+122-
+123-        # 🔥 THE CRITICAL DECODE CALL
+124:        logger.info("🔍 DECODE_JWT: Executing jwt.decode with full verification...")
+125:        payload = jwt.decode(
+126-            token,
+127-            JWT_SECRET,
+128-            algorithms=["HS256"],
+129-            audience=["authenticated"],  # 🔥 EXPLICIT AUDIENCE VALIDATION
+130-            options={"verify_signature": True}
+--
+144-        logger.error(f"❌ DECODE_JWT: Exception details: {repr(e)}")
+145-        logger.error("❌ DECODE_JWT: Token audience does not match expected 'authenticated'")
+146-        logger.error(f"❌ DECODE_JWT: Expected audience: ['authenticated']")
+147-        # Safe way to get audience without re-validation
+148-        try:
+149:            unverified = jwt.decode(token, options={'verify_signature': False})
+150-            logger.error(f"❌ DECODE_JWT: Token audience claim: {unverified.get('aud', 'MISSING')}")
+151-        except:
+152-            logger.error("❌ DECODE_JWT: Could not extract audience from token")
+153-        raise AuthError("Invalid token audience")
+154-    except jwt.InvalidSignatureError as e:
