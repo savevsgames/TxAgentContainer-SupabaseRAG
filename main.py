@@ -8,10 +8,12 @@ from pydantic import BaseModel, Field
 import uvicorn
 from dotenv import load_dotenv
 import uuid
+import time
 
 from embedder import Embedder
 from llm import LLMHandler
 from auth import get_user_id, get_auth_token, validate_token
+from utils import request_logger, log_request
 
 # Load environment variables
 load_dotenv()
@@ -23,6 +25,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("txagent")
 
+# Log system startup
+request_logger.log_system_event("startup", {
+    "model": os.getenv("MODEL_NAME", "dmis-lab/biobert-v1.1"),
+    "device": os.getenv("DEVICE", "cuda"),
+    "port": os.getenv("PORT", "8000"),
+    "log_level": os.getenv("LOG_LEVEL", "INFO")
+})
+
 # Initialize FastAPI app
 app = FastAPI(
     title="TxAgent Hybrid Container",
@@ -30,7 +40,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware
+# Add CORS middleware with extensive logging
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -40,8 +50,19 @@ app.add_middleware(
 )
 
 # Initialize services
-embedder = Embedder()
-llm_handler = LLMHandler()
+try:
+    embedder = Embedder()
+    request_logger.log_system_event("model_load", {"status": "success", "model": "BioBERT"})
+except Exception as e:
+    request_logger.log_system_event("model_load", {"status": "failed", "error": str(e)}, level="error")
+    raise
+
+try:
+    llm_handler = LLMHandler()
+    request_logger.log_system_event("model_load", {"status": "success", "model": "OpenAI"})
+except Exception as e:
+    request_logger.log_system_event("model_load", {"status": "failed", "error": str(e)}, level="warning")
+    llm_handler = None
 
 # Define request and response models
 class DocumentRequest(BaseModel):
@@ -74,10 +95,64 @@ class HealthResponse(BaseModel):
     device: str = os.getenv("DEVICE", "cuda")
     version: str = "1.0.0"
 
+# Middleware to log all requests
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    
+    # Extract user info from Authorization header if present
+    user_context = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        try:
+            token = auth_header.split(" ")[1]
+            user_id, payload = validate_token(token)
+            user_context = payload
+        except Exception as e:
+            request_logger.log_auth_event("token_validation", success=False, details={"error": str(e)})
+    
+    # Log request start
+    request_logger.log_request_start(
+        endpoint=f"{request.method} {request.url.path}",
+        method=request.method,
+        user_context=user_context,
+        request_data={
+            "url": str(request.url),
+            "headers": dict(request.headers),
+            "client": request.client.host if request.client else None
+        }
+    )
+    
+    try:
+        response = await call_next(request)
+        processing_time = time.time() - start_time
+        
+        request_logger.log_request_success(
+            endpoint=f"{request.method} {request.url.path}",
+            method=request.method,
+            user_context=user_context,
+            response_data={"status_code": response.status_code},
+            processing_time=processing_time
+        )
+        
+        return response
+    except Exception as e:
+        request_logger.log_request_error(
+            endpoint=f"{request.method} {request.url.path}",
+            method=request.method,
+            error=e,
+            user_context=user_context
+        )
+        raise
+
 # Background task to process document
 async def process_document_task(job_id: str, file_path: str, metadata: Dict[str, Any], user_id: str, jwt: str):
     """Background task to process and embed a document."""
-    logger.info(f"Processing document in background: {file_path} for user {user_id}")
+    request_logger.log_system_event("background_task_start", {
+        "job_id": job_id,
+        "file_path": file_path,
+        "user_id": user_id
+    })
     
     try:
         # Update job status to processing
@@ -92,6 +167,10 @@ async def process_document_task(job_id: str, file_path: str, metadata: Dict[str,
                 "failed",
                 error="No content extracted from document"
             )
+            request_logger.log_system_event("background_task_failed", {
+                "job_id": job_id,
+                "error": "No content extracted"
+            }, level="error")
             return
         
         # Store embeddings
@@ -105,17 +184,26 @@ async def process_document_task(job_id: str, file_path: str, metadata: Dict[str,
             document_ids=document_ids
         )
         
-        logger.info(f"Background processing complete: {len(document_ids)} chunks embedded")
+        request_logger.log_system_event("background_task_success", {
+            "job_id": job_id,
+            "chunks_processed": len(document_chunks),
+            "document_ids_created": len(document_ids)
+        })
+        
     except Exception as e:
-        logger.error(f"Error in background processing: {str(e)}")
         await embedder.update_job_status(
             job_id,
             "failed",
             error=str(e)
         )
+        request_logger.log_system_event("background_task_failed", {
+            "job_id": job_id,
+            "error": str(e)
+        }, level="error")
 
 # API Endpoints
 @app.post("/embed", response_model=JobResponse)
+@log_request("/embed")
 async def embed_document(
     request: DocumentRequest,
     background_tasks: BackgroundTasks,
@@ -127,12 +215,15 @@ async def embed_document(
     This endpoint processes a document, extracts text, and creates embeddings.
     The document must exist in Supabase Storage and be accessible by the user.
     """
-    logger.info(f"Embedding document request received: {request.file_path}")
-    
     try:
         # Validate JWT and get user ID
         token = get_auth_token(authorization)
-        user_id, _ = validate_token(token)
+        user_id, user_payload = validate_token(token)
+        
+        request_logger.log_auth_event("embed_request", user_context=user_payload, success=True, details={
+            "file_path": request.file_path,
+            "metadata_keys": list(request.metadata.keys())
+        })
         
         # Create job record
         job_id = str(uuid.uuid4())
@@ -158,13 +249,14 @@ async def embed_document(
             message=f"Document {request.file_path} is being processed in the background"
         )
     except HTTPException as e:
-        logger.error(f"HTTP error in embed endpoint: {e.detail}")
+        request_logger.log_auth_event("embed_request", success=False, details={"error": e.detail})
         raise
     except Exception as e:
         logger.error(f"Error in embed endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing document: {str(e)}")
 
 @app.get("/embedding-jobs/{job_id}", response_model=JobResponse)
+@log_request("/embedding-jobs")
 async def get_job_status(
     job_id: str,
     user_id: str = Depends(get_user_id)
@@ -192,9 +284,10 @@ async def get_job_status(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/chat", response_model=ChatResponse)
+@log_request("/chat")
 async def chat(
     request: ChatRequest,
-    user_id: str = Depends(get_user_id)
+    authorization: Optional[str] = Header(None)
 ):
     """
     Generate a response based on a query and document context.
@@ -202,9 +295,17 @@ async def chat(
     This endpoint performs similarity search to find relevant documents,
     then generates a response using an LLM based on the query and context.
     """
-    logger.info(f"Chat request received from user {user_id}")
-    
     try:
+        # Validate JWT and get user ID
+        token = get_auth_token(authorization)
+        user_id, user_payload = validate_token(token)
+        
+        request_logger.log_auth_event("chat_request", user_context=user_payload, success=True, details={
+            "query_length": len(request.query),
+            "top_k": request.top_k,
+            "temperature": request.temperature
+        })
+        
         # Perform similarity search
         similar_docs = embedder.similarity_search(
             query=request.query,
@@ -219,12 +320,16 @@ async def chat(
                 status="no_results"
             )
         
-        # Generate response using LLM
-        response = await llm_handler.generate_response(
-            query=request.query,
-            context=similar_docs,
-            temperature=request.temperature
-        )
+        # Generate response using LLM if available
+        if llm_handler:
+            response = await llm_handler.generate_response(
+                query=request.query,
+                context=similar_docs,
+                temperature=request.temperature
+            )
+        else:
+            # Fallback response if LLM not available
+            response = f"Based on the documents I found, here's relevant information: {similar_docs[0]['content'][:200]}..."
         
         # Format sources for response
         sources = [
@@ -236,25 +341,50 @@ async def chat(
             for doc in similar_docs
         ]
         
+        request_logger.log_performance_metric("chat_response", time.time(), user_context=user_payload, metadata={
+            "sources_found": len(sources),
+            "response_length": len(response)
+        })
+        
         return ChatResponse(
             response=response,
             sources=sources
         )
     except HTTPException as e:
-        logger.error(f"HTTP error in chat endpoint: {e.detail}")
+        request_logger.log_auth_event("chat_request", success=False, details={"error": e.detail})
         raise
     except Exception as e:
         logger.error(f"Error in chat endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error generating response: {str(e)}")
 
+# Test endpoints for debugging
+@app.get("/test")
+async def test_get():
+    """Test GET endpoint."""
+    request_logger.log_system_event("test_endpoint", {"method": "GET", "status": "success"})
+    return {"message": "GET endpoint working", "timestamp": time.time()}
+
+@app.post("/test")
+async def test_post(data: Dict[str, Any] = None):
+    """Test POST endpoint."""
+    request_logger.log_system_event("test_endpoint", {"method": "POST", "data": data, "status": "success"})
+    return {"message": "POST endpoint working", "received_data": data, "timestamp": time.time()}
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Check if the service is healthy."""
+    request_logger.log_system_event("health_check", {"status": "healthy"})
     return HealthResponse()
 
 if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
     debug = os.getenv("DEBUG", "False").lower() == "true"
+    
+    request_logger.log_system_event("server_start", {
+        "host": host,
+        "port": port,
+        "debug": debug
+    })
     
     uvicorn.run("main:app", host=host, port=port, reload=debug)
