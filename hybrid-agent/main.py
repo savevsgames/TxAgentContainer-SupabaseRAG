@@ -331,12 +331,13 @@ async def chat(
             "temperature": request.temperature
         })
         
-        # Perform similarity search
+        # Perform similarity search - pass the JWT token string
+        logger.info(f"🔍 CHAT: Calling similarity_search with JWT token")
         similar_docs = embedder.similarity_search(
             query=request.query,
             user_id=user_id,
             top_k=request.top_k,
-            jwt=token
+            jwt=token  # Pass the JWT token string, not the Request object
         )
         
         if not similar_docs:

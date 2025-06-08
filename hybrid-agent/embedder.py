@@ -431,9 +431,10 @@ class Embedder:
                 logger.error(f"❌ SIMILARITY_SEARCH: Exception details: {repr(e)}")
                 raise EmbeddingError(f"Failed to create query embedding: {str(e)}")
             
-            # STEP 2: Get Supabase client
+            # STEP 2: Get Supabase client with JWT token
             logger.info("🔍 SIMILARITY_SEARCH: STEP 2 - Getting Supabase client")
             try:
+                # Pass the JWT token string directly to _get_supabase_client
                 client = self._get_supabase_client(jwt)
                 logger.info(f"✅ SIMILARITY_SEARCH: Supabase client obtained")
                 logger.info(f"🔍 SIMILARITY_SEARCH: Client type: {type(client).__name__}")
