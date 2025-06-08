@@ -25,7 +25,7 @@ logger = logging.getLogger("embedder")
 
 # Supabase configuration
 supabase_url = os.getenv("SUPABASE_URL")
-supabase_key = os.getenv("SUPABASE_ANON_KEY")  # Updated to match environment variable name
+supabase_key = os.getenv("SUPABASE_ANON_KEY")  # Fixed: Changed from SUPABASE_KEY to SUPABASE_ANON_KEY
 supabase_service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 storage_bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "documents")
 
@@ -43,6 +43,14 @@ class Embedder:
     def __init__(self):
         """Initialize the embedder with the BioBERT model."""
         logger.info(f"Initializing BioBERT embedder using {device}")
+        logger.info(f"🔍 EMBEDDER_INIT: Supabase URL: {supabase_url}")
+        logger.info(f"🔍 EMBEDDER_INIT: Supabase key available: {bool(supabase_key)}")
+        logger.info(f"🔍 EMBEDDER_INIT: Supabase key length: {len(supabase_key) if supabase_key else 0}")
+        
+        if not supabase_key:
+            logger.error("❌ EMBEDDER_INIT: SUPABASE_ANON_KEY is not set!")
+            raise ValueError("SUPABASE_ANON_KEY environment variable is required")
+        
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModel.from_pretrained(model_name).to(device)
         self.model.eval()
