@@ -12,8 +12,10 @@ import time
 
 from embedder import Embedder
 from llm import LLMHandler
-from auth import get_user_id, get_auth_token, validate_token
-from utils import request_logger, log_request
+
+# Import from centralized auth service
+from core.auth_service import auth_service, get_user_id, get_auth_token, validate_token
+from core.logging import request_logger, log_request
 
 # Load environment variables
 load_dotenv()
@@ -106,12 +108,12 @@ class HealthResponse(BaseModel):
     device: str = os.getenv("DEVICE", "cuda")
     version: str = "1.0.0"
 
-# Middleware to log all requests
+# Middleware to log all requests using centralized auth service
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
     
-    # Extract user info from Authorization header if present
+    # Extract user info from Authorization header if present using centralized auth service
     user_context = None
     auth_header = request.headers.get("Authorization")
     
@@ -122,13 +124,13 @@ async def log_requests(request: Request, call_next):
         try:
             logger.info("🔍 Found Authorization header, attempting to validate...")
             token = auth_header.split(" ")[1]
-            user_id, payload = validate_token(token)
+            user_id, payload = auth_service.validate_token_and_get_user(token)
             user_context = payload
             logger.info(f"✅ Successfully authenticated user: {user_id}")
         except Exception as e:
             logger.error(f"❌ Token validation failed in middleware: {str(e)}")
             logger.error(f"❌ Exception type: {type(e).__name__}")
-            request_logger.log_auth_event("token_validation", success=False, details={"error": str(e)})
+            auth_service.log_auth_event("token_validation", success=False, details={"error": str(e)})
     else:
         logger.info("ℹ️ No Authorization header found or invalid format")
     
@@ -245,13 +247,13 @@ async def embed_document(
     logger.info(f"🚀 EMBED REQUEST: {request.file_path}")
     
     try:
-        # Validate JWT and get user ID
-        token = get_auth_token(authorization)
-        user_id, user_payload = validate_token(token)
+        # Validate JWT and get user ID using centralized auth service
+        token = auth_service.extract_token_from_header(authorization)
+        user_id, user_payload = auth_service.validate_token_and_get_user(token)
         
         logger.info(f"✅ Embed request authenticated for user: {user_id}")
         
-        request_logger.log_auth_event("embed_request", user_context=user_payload, success=True, details={
+        auth_service.log_auth_event("embed_request", user_context=user_payload, success=True, details={
             "file_path": request.file_path,
             "metadata_keys": list(request.metadata.keys())
         })
@@ -282,7 +284,7 @@ async def embed_document(
         )
     except HTTPException as e:
         logger.error(f"❌ HTTP error in embed endpoint: {e.detail}")
-        request_logger.log_auth_event("embed_request", success=False, details={"error": e.detail})
+        auth_service.log_auth_event("embed_request", success=False, details={"error": e.detail})
         raise
     except Exception as e:
         logger.error(f"❌ Unexpected error in embed endpoint: {str(e)}")
@@ -334,13 +336,13 @@ async def chat(
     logger.info(f"🚀 CHAT REQUEST: {request.query[:50]}...")
     
     try:
-        # Validate JWT and get user ID
-        token = get_auth_token(authorization)
-        user_id, user_payload = validate_token(token)
+        # Validate JWT and get user ID using centralized auth service
+        token = auth_service.extract_token_from_header(authorization)
+        user_id, user_payload = auth_service.validate_token_and_get_user(token)
         
         logger.info(f"✅ Chat request authenticated for user: {user_id}")
         
-        request_logger.log_auth_event("chat_request", user_context=user_payload, success=True, details={
+        auth_service.log_auth_event("chat_request", user_context=user_payload, success=True, details={
             "query_length": len(request.query),
             "top_k": request.top_k,
             "temperature": request.temperature
@@ -352,7 +354,7 @@ async def chat(
             query=request.query,
             user_id=user_id,
             top_k=request.top_k,
-            jwt=token  # Pass the JWT token string, not the Request object
+            jwt=token  # Pass the JWT token string
         )
         
         if not similar_docs:
@@ -394,13 +396,13 @@ async def chat(
         )
     except HTTPException as e:
         logger.error(f"❌ HTTP error in chat endpoint: {e.detail}")
-        request_logger.log_auth_event("chat_request", success=False, details={"error": e.detail})
+        auth_service.log_auth_event("chat_request", success=False, details={"error": e.detail})
         raise
     except Exception as e:
         logger.error(f"❌ Unexpected error in chat endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error generating response: {str(e)}")
 
-# Agent session management endpoints
+# Agent session management endpoints using centralized auth service
 @app.post("/agents", response_model=AgentSessionResponse)
 @log_request("/agents")
 async def create_agent_session(
@@ -413,14 +415,14 @@ async def create_agent_session(
     logger.info(f"🚀 CREATE AGENT SESSION REQUEST")
     
     try:
-        # Validate JWT and get user ID
-        token = get_auth_token(authorization)
-        user_id, user_payload = validate_token(token)
+        # Validate JWT and get user ID using centralized auth service
+        token = auth_service.extract_token_from_header(authorization)
+        user_id, user_payload = auth_service.validate_token_and_get_user(token)
         
         logger.info(f"✅ Create agent session authenticated for user: {user_id}")
         
-        # Get authenticated Supabase client
-        client = embedder._get_supabase_client(token)
+        # Get authenticated Supabase client using centralized auth service
+        client = auth_service.get_authenticated_client(token)
         
         # Create agent session using the database function
         result = client.rpc("create_agent_session", {
@@ -432,7 +434,7 @@ async def create_agent_session(
         
         agent_data = result.data[0]
         
-        request_logger.log_auth_event("agent_session_created", user_context=user_payload, success=True, details={
+        auth_service.log_auth_event("agent_session_created", user_context=user_payload, success=True, details={
             "agent_id": agent_data["id"],
             "session_data_keys": list(request.session_data.keys())
         })
@@ -447,7 +449,7 @@ async def create_agent_session(
         )
     except HTTPException as e:
         logger.error(f"❌ HTTP error in create agent session: {e.detail}")
-        request_logger.log_auth_event("agent_session_created", success=False, details={"error": e.detail})
+        auth_service.log_auth_event("agent_session_created", success=False, details={"error": e.detail})
         raise
     except Exception as e:
         logger.error(f"❌ Unexpected error in create agent session: {str(e)}")
@@ -464,14 +466,14 @@ async def get_active_agent(
     logger.info(f"🚀 GET ACTIVE AGENT REQUEST")
     
     try:
-        # Validate JWT and get user ID
-        token = get_auth_token(authorization)
-        user_id, user_payload = validate_token(token)
+        # Validate JWT and get user ID using centralized auth service
+        token = auth_service.extract_token_from_header(authorization)
+        user_id, user_payload = auth_service.validate_token_and_get_user(token)
         
         logger.info(f"✅ Get active agent authenticated for user: {user_id}")
         
-        # Get authenticated Supabase client
-        client = embedder._get_supabase_client(token)
+        # Get authenticated Supabase client using centralized auth service
+        client = auth_service.get_authenticated_client(token)
         
         # Get active agent session
         result = client.rpc("get_active_agent").execute()
@@ -511,14 +513,14 @@ async def terminate_agent_session(
     logger.info(f"🚀 TERMINATE AGENT SESSION REQUEST: {agent_id}")
     
     try:
-        # Validate JWT and get user ID
-        token = get_auth_token(authorization)
-        user_id, user_payload = validate_token(token)
+        # Validate JWT and get user ID using centralized auth service
+        token = auth_service.extract_token_from_header(authorization)
+        user_id, user_payload = auth_service.validate_token_and_get_user(token)
         
         logger.info(f"✅ Terminate agent session authenticated for user: {user_id}")
         
-        # Get authenticated Supabase client
-        client = embedder._get_supabase_client(token)
+        # Get authenticated Supabase client using centralized auth service
+        client = auth_service.get_authenticated_client(token)
         
         # Terminate agent session
         result = client.rpc("terminate_agent_session", {
@@ -528,7 +530,7 @@ async def terminate_agent_session(
         if not result.data:
             raise HTTPException(status_code=404, detail="Agent session not found or not owned by user")
         
-        request_logger.log_auth_event("agent_session_terminated", user_context=user_payload, success=True, details={
+        auth_service.log_auth_event("agent_session_terminated", user_context=user_payload, success=True, details={
             "agent_id": agent_id
         })
         

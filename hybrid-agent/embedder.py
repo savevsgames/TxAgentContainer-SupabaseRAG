@@ -7,11 +7,19 @@ import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 import logging
 from transformers import AutoTokenizer, AutoModel
-from tenacity import retry, stop_after_attempt, wait_exponential
-from supabase import create_client, Client
 from dotenv import load_dotenv
 import json
-from utils import with_retry, DocumentProcessingError, EmbeddingError, StorageError, validate_file_type
+
+# Import from centralized auth service
+from core.auth_service import auth_service
+from core import (
+    with_retry, 
+    DocumentProcessingError, 
+    EmbeddingError, 
+    StorageError, 
+    validate_file_type,
+    request_logger
+)
 
 # Load environment variables
 load_dotenv()
@@ -24,9 +32,6 @@ logging.basicConfig(
 logger = logging.getLogger("embedder")
 
 # Supabase configuration
-supabase_url = os.getenv("SUPABASE_URL")
-supabase_key = os.getenv("SUPABASE_ANON_KEY")  # Fixed: Changed from SUPABASE_KEY to SUPABASE_ANON_KEY
-supabase_service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 storage_bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "documents")
 
 # BioBERT model configuration
@@ -43,69 +48,16 @@ class Embedder:
     def __init__(self):
         """Initialize the embedder with the BioBERT model."""
         logger.info(f"Initializing BioBERT embedder using {device}")
-        logger.info(f"🔍 EMBEDDER_INIT: Supabase URL: {supabase_url}")
-        logger.info(f"🔍 EMBEDDER_INIT: Supabase key available: {bool(supabase_key)}")
-        logger.info(f"🔍 EMBEDDER_INIT: Supabase key length: {len(supabase_key) if supabase_key else 0}")
-        
-        if not supabase_key:
-            logger.error("❌ EMBEDDER_INIT: SUPABASE_ANON_KEY is not set!")
-            raise ValueError("SUPABASE_ANON_KEY environment variable is required")
         
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModel.from_pretrained(model_name).to(device)
         self.model.eval()
         
-        # Initialize Supabase clients - one with anon key, one with service role
-        self.supabase = create_client(supabase_url, supabase_key)
-        self.supabase_admin = create_client(supabase_url, supabase_service_key) if supabase_service_key else None
-        
         logger.info("Embedder initialized successfully")
-
-    def _get_supabase_client(self, jwt: Optional[str] = None) -> Client:
-        """
-        Get the appropriate Supabase client based on JWT presence.
-        
-        Args:
-            jwt: Optional JWT token for authenticated operations
-            
-        Returns:
-            Supabase client instance
-        """
-        logger.info(f"🔍 _GET_SUPABASE_CLIENT: Creating client with JWT: {bool(jwt)}")
-        
-        if jwt:
-            logger.info(f"🔍 _GET_SUPABASE_CLIENT: JWT token length: {len(jwt)}")
-            logger.info(f"🔍 _GET_SUPABASE_CLIENT: JWT token preview: {jwt[:50]}...")
-            
-            try:
-                # Create a new client with the anon key, then set the auth header
-                client = create_client(supabase_url, supabase_key)
-                
-                # Set the Authorization header for all requests
-                # This is the correct way to pass JWT tokens to supabase-py for RLS
-                client.auth._headers = {"Authorization": f"Bearer {jwt}"}
-                
-                logger.info(f"✅ _GET_SUPABASE_CLIENT: Successfully created authenticated client")
-                return client
-                
-            except Exception as e:
-                logger.error(f"❌ _GET_SUPABASE_CLIENT: Error creating authenticated client: {str(e)}")
-                
-                # Final fallback: use service role key if available
-                if self.supabase_admin:
-                    logger.warning(f"⚠️ _GET_SUPABASE_CLIENT: Using service role client as fallback")
-                    return self.supabase_admin
-                else:
-                    logger.error(f"❌ _GET_SUPABASE_CLIENT: No fallback available")
-                    raise StorageError(f"Failed to create authenticated Supabase client: {str(e)}")
-        else:
-            # Use default client with anon key
-            logger.info(f"✅ _GET_SUPABASE_CLIENT: Using default anon client")
-            return self.supabase
 
     async def create_embedding_job(self, job_id: str, file_path: str, user_id: str, jwt: Optional[str] = None) -> Dict[str, Any]:
         """
-        Create a new embedding job record.
+        Create a new embedding job record using centralized auth service.
         
         Args:
             job_id: Unique identifier for the job
@@ -119,7 +71,8 @@ class Embedder:
         logger.info(f"🔍 CREATE_EMBEDDING_JOB: Starting for user {user_id}")
         logger.info(f"🔍 CREATE_EMBEDDING_JOB: JWT provided: {bool(jwt)}")
         
-        client = self._get_supabase_client(jwt)
+        # Use centralized auth service to get authenticated client
+        client = auth_service.get_authenticated_client(jwt)
         
         try:
             result = client.table("embedding_jobs").insert({
@@ -134,7 +87,6 @@ class Embedder:
         except Exception as e:
             logger.error(f"❌ CREATE_EMBEDDING_JOB: Error creating embedding job: {str(e)}")
             logger.error(f"❌ CREATE_EMBEDDING_JOB: Exception type: {type(e).__name__}")
-            logger.error(f"❌ CREATE_EMBEDDING_JOB: Exception details: {repr(e)}")
             raise
 
     async def update_job_status(
@@ -147,7 +99,7 @@ class Embedder:
         jwt: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Update the status of an embedding job.
+        Update the status of an embedding job using centralized auth service.
         
         Args:
             job_id: Job identifier
@@ -163,7 +115,8 @@ class Embedder:
         logger.info(f"🔍 UPDATE_JOB_STATUS: Updating job {job_id} to {status}")
         logger.info(f"🔍 UPDATE_JOB_STATUS: JWT provided: {bool(jwt)}")
         
-        client = self._get_supabase_client(jwt)
+        # Use centralized auth service to get authenticated client
+        client = auth_service.get_authenticated_client(jwt)
         
         try:
             update_data = {
@@ -189,7 +142,6 @@ class Embedder:
         except Exception as e:
             logger.error(f"❌ UPDATE_JOB_STATUS: Error updating job status: {str(e)}")
             logger.error(f"❌ UPDATE_JOB_STATUS: Exception type: {type(e).__name__}")
-            logger.error(f"❌ UPDATE_JOB_STATUS: Exception details: {repr(e)}")
             raise
 
     async def get_job_status(self, job_id: str, user_id: str) -> Optional[Dict[str, Any]]:
@@ -203,7 +155,8 @@ class Embedder:
         Returns:
             Job record if found, None otherwise
         """
-        client = self._get_supabase_client()
+        # Use anon client for read operations (RLS will filter by user)
+        client = auth_service.get_authenticated_client()
         
         try:
             result = client.table("embedding_jobs").select("*").eq("id", job_id).eq("user_id", user_id).execute()
@@ -223,7 +176,7 @@ class Embedder:
     @with_retry(retries=3, delay=1.0, backoff=2.0, exceptions=(Exception,))
     def _download_file(self, file_path: str, jwt: Optional[str] = None) -> bytes:
         """
-        Download a file from Supabase Storage.
+        Download a file from Supabase Storage using centralized auth service.
         
         Args:
             file_path: Path to the file in Supabase Storage
@@ -234,7 +187,8 @@ class Embedder:
         """
         logger.info(f"Downloading file: {file_path}")
         
-        client = self._get_supabase_client(jwt)
+        # Use centralized auth service to get authenticated client
+        client = auth_service.get_authenticated_client(jwt)
         
         try:
             response = client.storage.from_(storage_bucket).download(file_path)
@@ -408,7 +362,7 @@ class Embedder:
 
     def store_embeddings(self, document_chunks: List[Dict[str, Any]], user_id: str, jwt: Optional[str] = None) -> List[str]:
         """
-        Store document chunks and embeddings in Supabase.
+        Store document chunks and embeddings in Supabase using centralized auth service.
         
         Args:
             document_chunks: List of document chunks with embeddings
@@ -421,7 +375,8 @@ class Embedder:
         logger.info(f"🔍 STORE_EMBEDDINGS: Storing {len(document_chunks)} embeddings for user {user_id}")
         logger.info(f"🔍 STORE_EMBEDDINGS: JWT provided: {bool(jwt)}")
         
-        client = self._get_supabase_client(jwt)
+        # Use centralized auth service to get authenticated client
+        client = auth_service.get_authenticated_client(jwt)
         
         document_ids = []
         
@@ -447,7 +402,6 @@ class Embedder:
             except Exception as e:
                 logger.error(f"❌ STORE_EMBEDDINGS: Error storing chunk {i+1}: {str(e)}")
                 logger.error(f"❌ STORE_EMBEDDINGS: Exception type: {type(e).__name__}")
-                logger.error(f"❌ STORE_EMBEDDINGS: Exception details: {repr(e)}")
                 raise
         
         logger.info(f"✅ STORE_EMBEDDINGS: Stored {len(document_ids)} embeddings successfully")
@@ -455,7 +409,7 @@ class Embedder:
 
     def similarity_search(self, query: str, user_id: str, top_k: int = 5, jwt: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Perform similarity search against stored embeddings.
+        Perform similarity search against stored embeddings using centralized auth service.
         
         Args:
             query: Query text
@@ -479,59 +433,36 @@ class Embedder:
                 query_embedding = self._create_embedding(query)
                 logger.info(f"✅ SIMILARITY_SEARCH: Query embedding created successfully")
                 logger.info(f"🔍 SIMILARITY_SEARCH: Embedding dimension: {len(query_embedding)}")
-                logger.info(f"🔍 SIMILARITY_SEARCH: Embedding preview: {query_embedding[:5]}...")
             except Exception as e:
                 logger.error(f"❌ SIMILARITY_SEARCH: STEP 1 FAILED - Error creating query embedding: {str(e)}")
-                logger.error(f"❌ SIMILARITY_SEARCH: Exception type: {type(e).__name__}")
-                logger.error(f"❌ SIMILARITY_SEARCH: Exception details: {repr(e)}")
                 raise EmbeddingError(f"Failed to create query embedding: {str(e)}")
             
-            # STEP 2: Get Supabase client with JWT token
-            logger.info("🔍 SIMILARITY_SEARCH: STEP 2 - Getting Supabase client")
+            # STEP 2: Get Supabase client with JWT token using centralized auth service
+            logger.info("🔍 SIMILARITY_SEARCH: STEP 2 - Getting authenticated Supabase client")
             try:
-                # Pass the JWT token string directly to _get_supabase_client
-                client = self._get_supabase_client(jwt)
+                client = auth_service.get_authenticated_client(jwt)
                 logger.info(f"✅ SIMILARITY_SEARCH: Supabase client obtained")
-                logger.info(f"🔍 SIMILARITY_SEARCH: Client type: {type(client).__name__}")
-                logger.info(f"🔍 SIMILARITY_SEARCH: Client URL: {client.supabase_url}")
-                
             except Exception as e:
                 logger.error(f"❌ SIMILARITY_SEARCH: STEP 2 FAILED - Error getting Supabase client: {str(e)}")
-                logger.error(f"❌ SIMILARITY_SEARCH: Exception type: {type(e).__name__}")
-                logger.error(f"❌ SIMILARITY_SEARCH: Exception details: {repr(e)}")
                 raise StorageError(f"Failed to get Supabase client: {str(e)}")
             
-            # STEP 3: Prepare RPC parameters (updated for new function signature)
+            # STEP 3: Prepare RPC parameters for the standardized function
             logger.info("🔍 SIMILARITY_SEARCH: STEP 3 - Preparing RPC parameters")
             rpc_params = {
                 "query_embedding": query_embedding,
                 "match_threshold": 0.5,
                 "match_count": top_k
-                # Removed query_user_id parameter - now handled by RLS
+                # Note: No query_user_id parameter - RLS handles user filtering automatically
             }
             logger.info(f"🔍 SIMILARITY_SEARCH: RPC function: match_documents")
             logger.info(f"🔍 SIMILARITY_SEARCH: RPC parameters: {list(rpc_params.keys())}")
-            logger.info(f"🔍 SIMILARITY_SEARCH: Match threshold: {rpc_params['match_threshold']}")
-            logger.info(f"🔍 SIMILARITY_SEARCH: Match count: {rpc_params['match_count']}")
             
-            # STEP 4: Execute RPC call
+            # STEP 4: Execute RPC call to the standardized match_documents function
             logger.info("🔍 SIMILARITY_SEARCH: STEP 4 - Executing RPC call to match_documents")
             try:
                 logger.info("🔍 SIMILARITY_SEARCH: Calling client.rpc('match_documents', params)")
                 result = client.rpc("match_documents", rpc_params).execute()
                 logger.info(f"✅ SIMILARITY_SEARCH: RPC call completed successfully")
-                logger.info(f"🔍 SIMILARITY_SEARCH: Result type: {type(result)}")
-                logger.info(f"🔍 SIMILARITY_SEARCH: Result attributes: {dir(result)}")
-                
-                # Check if result has expected structure
-                if hasattr(result, 'data'):
-                    logger.info(f"🔍 SIMILARITY_SEARCH: Result.data type: {type(result.data)}")
-                    logger.info(f"🔍 SIMILARITY_SEARCH: Result.data length: {len(result.data) if result.data else 0}")
-                    if result.data:
-                        logger.info(f"🔍 SIMILARITY_SEARCH: First result keys: {list(result.data[0].keys()) if result.data else 'None'}")
-                else:
-                    logger.warning(f"⚠️ SIMILARITY_SEARCH: Result object has no 'data' attribute")
-                    logger.info(f"🔍 SIMILARITY_SEARCH: Result content: {result}")
                 
                 # Check for errors in result
                 if hasattr(result, 'error') and result.error:
@@ -541,18 +472,10 @@ class Embedder:
             except Exception as e:
                 logger.error(f"❌ SIMILARITY_SEARCH: STEP 4 FAILED - RPC call error: {str(e)}")
                 logger.error(f"❌ SIMILARITY_SEARCH: Exception type: {type(e).__name__}")
-                logger.error(f"❌ SIMILARITY_SEARCH: Exception details: {repr(e)}")
-                logger.error(f"❌ SIMILARITY_SEARCH: Exception args: {getattr(e, 'args', 'No args')}")
                 
-                # Check if this is the 'headers' error
+                # Check for specific error patterns
                 if "'dict' object has no attribute 'headers'" in str(e):
-                    logger.error(f"🚨 SIMILARITY_SEARCH: DETECTED 'headers' error - this is likely an httpx/supabase client issue")
-                    logger.error(f"🚨 SIMILARITY_SEARCH: This error typically occurs when:")
-                    logger.error(f"🚨 SIMILARITY_SEARCH: 1. Network connectivity issues")
-                    logger.error(f"🚨 SIMILARITY_SEARCH: 2. Invalid Supabase credentials")
-                    logger.error(f"🚨 SIMILARITY_SEARCH: 3. RLS policy violations")
-                    logger.error(f"🚨 SIMILARITY_SEARCH: 4. Database function doesn't exist")
-                    logger.error(f"🚨 SIMILARITY_SEARCH: 5. JWT token issues")
+                    logger.error(f"🚨 SIMILARITY_SEARCH: DETECTED 'headers' error - likely auth/client issue")
                 
                 raise StorageError(f"RPC call to match_documents failed: {str(e)}")
             
@@ -575,14 +498,11 @@ class Embedder:
                 
             except Exception as e:
                 logger.error(f"❌ SIMILARITY_SEARCH: STEP 5 FAILED - Error processing results: {str(e)}")
-                logger.error(f"❌ SIMILARITY_SEARCH: Exception type: {type(e).__name__}")
-                logger.error(f"❌ SIMILARITY_SEARCH: Exception details: {repr(e)}")
                 raise StorageError(f"Failed to process search results: {str(e)}")
             
         except Exception as e:
             logger.error(f"❌ SIMILARITY_SEARCH: OVERALL FAILURE - {str(e)}")
             logger.error(f"❌ SIMILARITY_SEARCH: Final exception type: {type(e).__name__}")
-            logger.error(f"❌ SIMILARITY_SEARCH: Final exception details: {repr(e)}")
             
             # Re-raise with more context
             if isinstance(e, (EmbeddingError, StorageError)):
