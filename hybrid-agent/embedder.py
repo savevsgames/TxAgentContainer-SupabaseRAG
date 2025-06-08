@@ -411,27 +411,125 @@ class Embedder:
         Returns:
             List of similar documents with metadata
         """
-        logger.info(f"Performing similarity search for query: {query}")
+        logger.info(f"🔍 SIMILARITY_SEARCH: Starting similarity search")
+        logger.info(f"🔍 SIMILARITY_SEARCH: Query: {query[:100]}...")
+        logger.info(f"🔍 SIMILARITY_SEARCH: User ID: {user_id}")
+        logger.info(f"🔍 SIMILARITY_SEARCH: Top K: {top_k}")
+        logger.info(f"🔍 SIMILARITY_SEARCH: JWT provided: {bool(jwt)}")
         
         try:
-            # Create embedding for the query
-            query_embedding = self._create_embedding(query)
+            # STEP 1: Create embedding for the query
+            logger.info("🔍 SIMILARITY_SEARCH: STEP 1 - Creating query embedding")
+            try:
+                query_embedding = self._create_embedding(query)
+                logger.info(f"✅ SIMILARITY_SEARCH: Query embedding created successfully")
+                logger.info(f"🔍 SIMILARITY_SEARCH: Embedding dimension: {len(query_embedding)}")
+                logger.info(f"🔍 SIMILARITY_SEARCH: Embedding preview: {query_embedding[:5]}...")
+            except Exception as e:
+                logger.error(f"❌ SIMILARITY_SEARCH: STEP 1 FAILED - Error creating query embedding: {str(e)}")
+                logger.error(f"❌ SIMILARITY_SEARCH: Exception type: {type(e).__name__}")
+                logger.error(f"❌ SIMILARITY_SEARCH: Exception details: {repr(e)}")
+                raise EmbeddingError(f"Failed to create query embedding: {str(e)}")
             
-            client = self._get_supabase_client(jwt)
+            # STEP 2: Get Supabase client
+            logger.info("🔍 SIMILARITY_SEARCH: STEP 2 - Getting Supabase client")
+            try:
+                client = self._get_supabase_client(jwt)
+                logger.info(f"✅ SIMILARITY_SEARCH: Supabase client obtained")
+                logger.info(f"🔍 SIMILARITY_SEARCH: Client type: {type(client).__name__}")
+                logger.info(f"🔍 SIMILARITY_SEARCH: Client URL: {client.supabase_url}")
+            except Exception as e:
+                logger.error(f"❌ SIMILARITY_SEARCH: STEP 2 FAILED - Error getting Supabase client: {str(e)}")
+                logger.error(f"❌ SIMILARITY_SEARCH: Exception type: {type(e).__name__}")
+                logger.error(f"❌ SIMILARITY_SEARCH: Exception details: {repr(e)}")
+                raise StorageError(f"Failed to get Supabase client: {str(e)}")
             
-            # Perform similarity search in Supabase pgvector
-            result = client.rpc(
-                "match_documents",
-                {
-                    "query_embedding": query_embedding,
-                    "match_threshold": 0.5,
-                    "match_count": top_k,
-                    "query_user_id": user_id
-                }
-            ).execute()
+            # STEP 3: Prepare RPC parameters
+            logger.info("🔍 SIMILARITY_SEARCH: STEP 3 - Preparing RPC parameters")
+            rpc_params = {
+                "query_embedding": query_embedding,
+                "match_threshold": 0.5,
+                "match_count": top_k,
+                "query_user_id": user_id
+            }
+            logger.info(f"🔍 SIMILARITY_SEARCH: RPC function: match_documents")
+            logger.info(f"🔍 SIMILARITY_SEARCH: RPC parameters: {list(rpc_params.keys())}")
+            logger.info(f"🔍 SIMILARITY_SEARCH: Match threshold: {rpc_params['match_threshold']}")
+            logger.info(f"🔍 SIMILARITY_SEARCH: Match count: {rpc_params['match_count']}")
+            logger.info(f"🔍 SIMILARITY_SEARCH: Query user ID: {rpc_params['query_user_id']}")
             
-            logger.info(f"Found {len(result.data)} matching documents")
-            return result.data
+            # STEP 4: Execute RPC call
+            logger.info("🔍 SIMILARITY_SEARCH: STEP 4 - Executing RPC call to match_documents")
+            try:
+                logger.info("🔍 SIMILARITY_SEARCH: Calling client.rpc('match_documents', params)")
+                result = client.rpc("match_documents", rpc_params).execute()
+                logger.info(f"✅ SIMILARITY_SEARCH: RPC call completed successfully")
+                logger.info(f"🔍 SIMILARITY_SEARCH: Result type: {type(result)}")
+                logger.info(f"🔍 SIMILARITY_SEARCH: Result attributes: {dir(result)}")
+                
+                # Check if result has expected structure
+                if hasattr(result, 'data'):
+                    logger.info(f"🔍 SIMILARITY_SEARCH: Result.data type: {type(result.data)}")
+                    logger.info(f"🔍 SIMILARITY_SEARCH: Result.data length: {len(result.data) if result.data else 0}")
+                    if result.data:
+                        logger.info(f"🔍 SIMILARITY_SEARCH: First result keys: {list(result.data[0].keys()) if result.data else 'None'}")
+                else:
+                    logger.warning(f"⚠️ SIMILARITY_SEARCH: Result object has no 'data' attribute")
+                    logger.info(f"🔍 SIMILARITY_SEARCH: Result content: {result}")
+                
+                # Check for errors in result
+                if hasattr(result, 'error') and result.error:
+                    logger.error(f"❌ SIMILARITY_SEARCH: Supabase RPC returned error: {result.error}")
+                    raise StorageError(f"Supabase RPC error: {result.error}")
+                
+            except Exception as e:
+                logger.error(f"❌ SIMILARITY_SEARCH: STEP 4 FAILED - RPC call error: {str(e)}")
+                logger.error(f"❌ SIMILARITY_SEARCH: Exception type: {type(e).__name__}")
+                logger.error(f"❌ SIMILARITY_SEARCH: Exception details: {repr(e)}")
+                logger.error(f"❌ SIMILARITY_SEARCH: Exception args: {getattr(e, 'args', 'No args')}")
+                
+                # Check if this is the 'headers' error
+                if "'dict' object has no attribute 'headers'" in str(e):
+                    logger.error(f"🚨 SIMILARITY_SEARCH: DETECTED 'headers' error - this is likely an httpx/supabase client issue")
+                    logger.error(f"🚨 SIMILARITY_SEARCH: This error typically occurs when:")
+                    logger.error(f"🚨 SIMILARITY_SEARCH: 1. Network connectivity issues")
+                    logger.error(f"🚨 SIMILARITY_SEARCH: 2. Invalid Supabase credentials")
+                    logger.error(f"🚨 SIMILARITY_SEARCH: 3. RLS policy violations")
+                    logger.error(f"🚨 SIMILARITY_SEARCH: 4. Database function doesn't exist")
+                    logger.error(f"🚨 SIMILARITY_SEARCH: 5. JWT token issues")
+                
+                raise StorageError(f"RPC call to match_documents failed: {str(e)}")
+            
+            # STEP 5: Process and return results
+            logger.info("🔍 SIMILARITY_SEARCH: STEP 5 - Processing results")
+            try:
+                search_results = result.data if hasattr(result, 'data') else []
+                logger.info(f"✅ SIMILARITY_SEARCH: Found {len(search_results)} matching documents")
+                
+                if search_results:
+                    logger.info(f"🔍 SIMILARITY_SEARCH: Sample result structure: {list(search_results[0].keys())}")
+                    for i, doc in enumerate(search_results[:3]):  # Log first 3 results
+                        similarity = doc.get('similarity', 'unknown')
+                        content_preview = doc.get('content', '')[:50] + '...' if doc.get('content') else 'No content'
+                        logger.info(f"🔍 SIMILARITY_SEARCH: Result {i+1}: similarity={similarity}, content='{content_preview}'")
+                else:
+                    logger.info(f"ℹ️ SIMILARITY_SEARCH: No matching documents found")
+                
+                return search_results
+                
+            except Exception as e:
+                logger.error(f"❌ SIMILARITY_SEARCH: STEP 5 FAILED - Error processing results: {str(e)}")
+                logger.error(f"❌ SIMILARITY_SEARCH: Exception type: {type(e).__name__}")
+                logger.error(f"❌ SIMILARITY_SEARCH: Exception details: {repr(e)}")
+                raise StorageError(f"Failed to process search results: {str(e)}")
+            
         except Exception as e:
-            logger.error(f"Error performing similarity search: {str(e)}")
-            raise
+            logger.error(f"❌ SIMILARITY_SEARCH: OVERALL FAILURE - {str(e)}")
+            logger.error(f"❌ SIMILARITY_SEARCH: Final exception type: {type(e).__name__}")
+            logger.error(f"❌ SIMILARITY_SEARCH: Final exception details: {repr(e)}")
+            
+            # Re-raise with more context
+            if isinstance(e, (EmbeddingError, StorageError)):
+                raise
+            else:
+                raise StorageError(f"Similarity search failed: {str(e)}")
