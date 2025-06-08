@@ -69,25 +69,37 @@ class Embedder:
             logger.info(f"🔍 _GET_SUPABASE_CLIENT: JWT token length: {len(jwt)}")
             logger.info(f"🔍 _GET_SUPABASE_CLIENT: JWT token preview: {jwt[:50]}...")
             
-            # Create a new client with the provided JWT in the correct format
-            # The supabase-py library expects headers to be nested under 'headers' key
-            options = {
-                "headers": {
-                    "Authorization": f"Bearer {jwt}"
-                }
-            }
-            
-            logger.info(f"🔍 _GET_SUPABASE_CLIENT: Options structure: {options}")
-            
             try:
-                client = create_client(supabase_url, supabase_key, options)
+                # Create a new client with the anon key, then set the auth token
+                # This is the proper way to authenticate with supabase-py
+                client = create_client(supabase_url, supabase_key)
+                
+                # Set the auth token on the client
+                # This will add the Authorization header to all requests
+                client.auth.set_session_from_url(f"#access_token={jwt}&token_type=bearer")
+                
                 logger.info(f"✅ _GET_SUPABASE_CLIENT: Successfully created authenticated client")
                 return client
             except Exception as e:
-                logger.error(f"❌ _GET_SUPABASE_CLIENT: Error creating authenticated client: {str(e)}")
-                logger.error(f"❌ _GET_SUPABASE_CLIENT: Exception type: {type(e).__name__}")
-                logger.error(f"❌ _GET_SUPABASE_CLIENT: Exception details: {repr(e)}")
-                raise StorageError(f"Failed to create authenticated Supabase client: {str(e)}")
+                logger.error(f"❌ _GET_SUPABASE_CLIENT: Error with set_session_from_url: {str(e)}")
+                
+                # Fallback: manually set the auth header
+                try:
+                    client = create_client(supabase_url, supabase_key)
+                    # Manually set the Authorization header for all requests
+                    client.auth._headers = {"Authorization": f"Bearer {jwt}"}
+                    logger.info(f"✅ _GET_SUPABASE_CLIENT: Successfully created client with manual auth header")
+                    return client
+                except Exception as e2:
+                    logger.error(f"❌ _GET_SUPABASE_CLIENT: Error with manual auth header: {str(e2)}")
+                    
+                    # Final fallback: use service role key if available
+                    if self.supabase_admin:
+                        logger.warning(f"⚠️ _GET_SUPABASE_CLIENT: Using service role client as fallback")
+                        return self.supabase_admin
+                    else:
+                        logger.error(f"❌ _GET_SUPABASE_CLIENT: No fallback available")
+                        raise StorageError(f"Failed to create authenticated Supabase client: {str(e)}")
         else:
             # Use default client with anon key
             logger.info(f"✅ _GET_SUPABASE_CLIENT: Using default anon client")
