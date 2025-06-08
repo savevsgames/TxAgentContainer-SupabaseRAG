@@ -113,7 +113,7 @@ class Embedder:
             logger.info(f"✅ _GET_SUPABASE_CLIENT: Using default anon client")
             return self.supabase
 
-    async def create_embedding_job(self, job_id: str, file_path: str, user_id: str) -> Dict[str, Any]:
+    async def create_embedding_job(self, job_id: str, file_path: str, user_id: str, jwt: Optional[str] = None) -> Dict[str, Any]:
         """
         Create a new embedding job record.
         
@@ -121,11 +121,12 @@ class Embedder:
             job_id: Unique identifier for the job
             file_path: Path to the file in Supabase Storage
             user_id: User ID who initiated the job
+            jwt: JWT token for authenticated operations
             
         Returns:
             Created job record
         """
-        client = self._get_supabase_client()
+        client = self._get_supabase_client(jwt)
         
         try:
             result = client.table("embedding_jobs").insert({
@@ -146,7 +147,8 @@ class Embedder:
         status: str,
         chunk_count: Optional[int] = None,
         document_ids: Optional[List[str]] = None,
-        error: Optional[str] = None
+        error: Optional[str] = None,
+        jwt: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Update the status of an embedding job.
@@ -157,11 +159,12 @@ class Embedder:
             chunk_count: Optional number of chunks processed
             document_ids: Optional list of created document IDs
             error: Optional error message if job failed
+            jwt: JWT token for authenticated operations
             
         Returns:
             Updated job record
         """
-        client = self._get_supabase_client()
+        client = self._get_supabase_client(jwt)
         
         try:
             update_data = {

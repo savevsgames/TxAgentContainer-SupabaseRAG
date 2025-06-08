@@ -179,8 +179,8 @@ async def process_document_task(job_id: str, file_path: str, metadata: Dict[str,
     })
     
     try:
-        # Update job status to processing
-        await embedder.update_job_status(job_id, "processing")
+        # Update job status to processing - pass JWT token
+        await embedder.update_job_status(job_id, "processing", jwt=jwt)
         
         # Process document
         document_chunks = embedder.process_document(file_path, metadata, jwt)
@@ -189,7 +189,8 @@ async def process_document_task(job_id: str, file_path: str, metadata: Dict[str,
             await embedder.update_job_status(
                 job_id,
                 "failed",
-                error="No content extracted from document"
+                error="No content extracted from document",
+                jwt=jwt
             )
             request_logger.log_system_event("background_task_failed", {
                 "job_id": job_id,
@@ -200,12 +201,13 @@ async def process_document_task(job_id: str, file_path: str, metadata: Dict[str,
         # Store embeddings
         document_ids = embedder.store_embeddings(document_chunks, user_id, jwt)
         
-        # Update job with success status and document IDs
+        # Update job with success status and document IDs - pass JWT token
         await embedder.update_job_status(
             job_id,
             "completed",
             chunk_count=len(document_chunks),
-            document_ids=document_ids
+            document_ids=document_ids,
+            jwt=jwt
         )
         
         request_logger.log_system_event("background_task_success", {
@@ -218,7 +220,8 @@ async def process_document_task(job_id: str, file_path: str, metadata: Dict[str,
         await embedder.update_job_status(
             job_id,
             "failed",
-            error=str(e)
+            error=str(e),
+            jwt=jwt
         )
         request_logger.log_system_event("background_task_failed", {
             "job_id": job_id,
@@ -253,12 +256,13 @@ async def embed_document(
             "metadata_keys": list(request.metadata.keys())
         })
         
-        # Create job record
+        # Create job record - pass JWT token
         job_id = str(uuid.uuid4())
         await embedder.create_embedding_job(
             job_id,
             request.file_path,
-            user_id
+            user_id,
+            jwt=token
         )
         
         # Schedule background task
