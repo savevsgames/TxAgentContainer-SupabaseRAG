@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "TxAgent API Tests",
-    "description": "Test collection for TxAgent Hybrid Container",
+    "name": "TxAgent API Tests - Complete",
+    "description": "Complete test collection for TxAgent Hybrid Container including agent management",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -17,6 +17,11 @@
     },
     {
       "key": "job_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "agent_id",
       "value": "",
       "type": "string"
     }
@@ -138,7 +143,96 @@
       }
     },
     {
-      "name": "4. Embed Document (Requires Auth)",
+      "name": "4. Create Agent Session (Requires Auth)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has agent ID\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('id');",
+              "    pm.collectionVariables.set('agent_id', jsonData.id);",
+              "});",
+              "",
+              "pm.test(\"Response has status\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('status');",
+              "    pm.expect(jsonData.status).to.eql('active');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"session_data\": {\n    \"container_url\": \"https://bjo5yophw94s7b-8000.proxy.runpod.net\",\n    \"capabilities\": [\"embedding\", \"chat\"],\n    \"model\": \"dmis-lab/biobert-v1.1\",\n    \"created_by\": \"postman_test\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/agents",
+          "host": ["{{base_url}}"],
+          "path": ["agents"]
+        }
+      }
+    },
+    {
+      "name": "5. Get Active Agent (Requires Auth)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has agent info\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('agent');",
+              "    if (jsonData.agent) {",
+              "        pm.expect(jsonData.agent).to.have.property('id');",
+              "        pm.expect(jsonData.agent).to.have.property('status');",
+              "    }",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/agents/active",
+          "host": ["{{base_url}}"],
+          "path": ["agents", "active"]
+        }
+      }
+    },
+    {
+      "name": "6. Create Test Document (Requires Auth)",
       "event": [
         {
           "listen": "test",
@@ -178,7 +272,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"file_path\": \"test-documents/sample-medical-paper.pdf\",\n  \"metadata\": {\n    \"title\": \"Sample Medical Research Paper\",\n    \"author\": \"Dr. Test Author\",\n    \"category\": \"cardiology\",\n    \"year\": \"2024\",\n    \"source\": \"postman_test\"\n  }\n}"
+          "raw": "{\n  \"file_path\": \"test-documents/sample-medical-paper.pdf\",\n  \"metadata\": {\n    \"title\": \"Sample Medical Research Paper\",\n    \"author\": \"Dr. Test Author\",\n    \"category\": \"cardiology\",\n    \"year\": \"2024\",\n    \"source\": \"postman_test\",\n    \"content\": \"This is a test document about cardiovascular health. Hypertension is a common condition that affects millions of people worldwide. Treatment options include lifestyle modifications such as diet and exercise, as well as medications like ACE inhibitors, beta blockers, and diuretics. Regular monitoring of blood pressure is essential for effective management.\"\n  }\n}"
         },
         "url": {
           "raw": "{{base_url}}/embed",
@@ -188,7 +282,7 @@
       }
     },
     {
-      "name": "5. Get Job Status (Requires Auth)",
+      "name": "7. Get Job Status (Requires Auth)",
       "event": [
         {
           "listen": "test",
@@ -226,7 +320,7 @@
       }
     },
     {
-      "name": "6. Chat Query (Requires Auth)",
+      "name": "8. Chat Query (Requires Auth)",
       "event": [
         {
           "listen": "test",
@@ -266,7 +360,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"query\": \"What are the main findings in the medical research?\",\n  \"history\": [],\n  \"top_k\": 5,\n  \"temperature\": 0.7,\n  \"stream\": false\n}"
+          "raw": "{\n  \"query\": \"What are the treatment options for hypertension?\",\n  \"history\": [],\n  \"top_k\": 5,\n  \"temperature\": 0.7,\n  \"stream\": false\n}"
         },
         "url": {
           "raw": "{{base_url}}/chat",
@@ -276,7 +370,7 @@
       }
     },
     {
-      "name": "7. Chat Query - No Results Test",
+      "name": "9. Chat Query - No Results Test",
       "event": [
         {
           "listen": "test",
@@ -320,7 +414,44 @@
       }
     },
     {
-      "name": "8. Test Authentication Failure",
+      "name": "10. Terminate Agent Session (Requires Auth)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200 or 404\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+              "});",
+              "",
+              "if (pm.response.code === 200) {",
+              "    pm.test(\"Response has success message\", function () {",
+              "        var jsonData = pm.response.json();",
+              "        pm.expect(jsonData).to.have.property('message');",
+              "    });",
+              "}"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/agents/{{agent_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["agents", "{{agent_id}}"]
+        }
+      }
+    },
+    {
+      "name": "11. Test Authentication Failure",
       "event": [
         {
           "listen": "test",

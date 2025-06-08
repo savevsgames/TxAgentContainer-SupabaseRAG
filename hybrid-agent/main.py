@@ -89,6 +89,17 @@ class ChatResponse(BaseModel):
     sources: List[Dict[str, Any]] = []
     status: str = "success"
 
+class AgentSessionRequest(BaseModel):
+    session_data: Dict[str, Any] = {}
+
+class AgentSessionResponse(BaseModel):
+    id: str
+    user_id: str
+    status: str
+    session_data: Dict[str, Any]
+    created_at: str
+    message: str = "Agent session created successfully"
+
 class HealthResponse(BaseModel):
     status: str = "healthy"
     model: str = os.getenv("MODEL_NAME", "dmis-lab/biobert-v1.1")
@@ -342,7 +353,7 @@ async def chat(
         
         if not similar_docs:
             return ChatResponse(
-                response="I couldn't find any relevant information to answer your question.",
+                response="I couldn't find any relevant information to answer your question. Please make sure you have uploaded some documents first.",
                 sources=[],
                 status="no_results"
             )
@@ -384,6 +395,146 @@ async def chat(
     except Exception as e:
         logger.error(f"❌ Unexpected error in chat endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error generating response: {str(e)}")
+
+# Agent session management endpoints
+@app.post("/agents", response_model=AgentSessionResponse)
+@log_request("/agents")
+async def create_agent_session(
+    request: AgentSessionRequest,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Create a new agent session for the authenticated user.
+    """
+    logger.info(f"🚀 CREATE AGENT SESSION REQUEST")
+    
+    try:
+        # Validate JWT and get user ID
+        token = get_auth_token(authorization)
+        user_id, user_payload = validate_token(token)
+        
+        logger.info(f"✅ Create agent session authenticated for user: {user_id}")
+        
+        # Get authenticated Supabase client
+        client = embedder._get_supabase_client(token)
+        
+        # Create agent session using the database function
+        result = client.rpc("create_agent_session", {
+            "session_data": request.session_data
+        }).execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=500, detail="Failed to create agent session")
+        
+        agent_data = result.data[0]
+        
+        request_logger.log_auth_event("agent_session_created", user_context=user_payload, success=True, details={
+            "agent_id": agent_data["id"],
+            "session_data_keys": list(request.session_data.keys())
+        })
+        
+        return AgentSessionResponse(
+            id=agent_data["id"],
+            user_id=agent_data["user_id"],
+            status=agent_data["status"],
+            session_data=agent_data["session_data"],
+            created_at=agent_data["created_at"],
+            message="Agent session created successfully"
+        )
+    except HTTPException as e:
+        logger.error(f"❌ HTTP error in create agent session: {e.detail}")
+        request_logger.log_auth_event("agent_session_created", success=False, details={"error": e.detail})
+        raise
+    except Exception as e:
+        logger.error(f"❌ Unexpected error in create agent session: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating agent session: {str(e)}")
+
+@app.get("/agents/active")
+@log_request("/agents/active")
+async def get_active_agent(
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Get the active agent session for the authenticated user.
+    """
+    logger.info(f"🚀 GET ACTIVE AGENT REQUEST")
+    
+    try:
+        # Validate JWT and get user ID
+        token = get_auth_token(authorization)
+        user_id, user_payload = validate_token(token)
+        
+        logger.info(f"✅ Get active agent authenticated for user: {user_id}")
+        
+        # Get authenticated Supabase client
+        client = embedder._get_supabase_client(token)
+        
+        # Get active agent session
+        result = client.rpc("get_active_agent").execute()
+        
+        if not result.data:
+            return {"agent": None, "message": "No active agent session found"}
+        
+        agent_data = result.data[0]
+        
+        return {
+            "agent": {
+                "id": agent_data["id"],
+                "user_id": agent_data["user_id"],
+                "status": agent_data["status"],
+                "session_data": agent_data["session_data"],
+                "created_at": agent_data["created_at"],
+                "last_active": agent_data["last_active"]
+            },
+            "message": "Active agent session found"
+        }
+    except HTTPException as e:
+        logger.error(f"❌ HTTP error in get active agent: {e.detail}")
+        raise
+    except Exception as e:
+        logger.error(f"❌ Unexpected error in get active agent: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting active agent: {str(e)}")
+
+@app.delete("/agents/{agent_id}")
+@log_request("/agents/terminate")
+async def terminate_agent_session(
+    agent_id: str,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Terminate an agent session.
+    """
+    logger.info(f"🚀 TERMINATE AGENT SESSION REQUEST: {agent_id}")
+    
+    try:
+        # Validate JWT and get user ID
+        token = get_auth_token(authorization)
+        user_id, user_payload = validate_token(token)
+        
+        logger.info(f"✅ Terminate agent session authenticated for user: {user_id}")
+        
+        # Get authenticated Supabase client
+        client = embedder._get_supabase_client(token)
+        
+        # Terminate agent session
+        result = client.rpc("terminate_agent_session", {
+            "agent_id": agent_id
+        }).execute()
+        
+        if not result.data:
+            raise HTTPException(status_code=404, detail="Agent session not found or not owned by user")
+        
+        request_logger.log_auth_event("agent_session_terminated", user_context=user_payload, success=True, details={
+            "agent_id": agent_id
+        })
+        
+        return {"message": "Agent session terminated successfully"}
+    except HTTPException as e:
+        logger.error(f"❌ HTTP error in terminate agent session: {e.detail}")
+        raise
+    except Exception as e:
+        logger.error(f"❌ Unexpected error in terminate agent session: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error terminating agent session: {str(e)}")
 
 # Test endpoints for debugging
 @app.get("/test")
