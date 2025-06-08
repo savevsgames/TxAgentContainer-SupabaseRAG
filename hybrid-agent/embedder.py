@@ -78,43 +78,26 @@ class Embedder:
             logger.info(f"🔍 _GET_SUPABASE_CLIENT: JWT token preview: {jwt[:50]}...")
             
             try:
-                # Create a new client with the anon key, then set the auth token
-                # This is the proper way to authenticate with supabase-py
+                # Create a new client with the anon key, then set the auth header
                 client = create_client(supabase_url, supabase_key)
                 
-                # Method 1: Set the auth token using set_session_from_url
-                # This properly sets the JWT token for all subsequent requests
-                client.auth.set_session_from_url(f"#access_token={jwt}&token_type=bearer")
-                
-                # Test if auth.uid() works after setting the session
-                try:
-                    test_result = client.rpc("auth.uid").execute()
-                    logger.info(f"🔍 _GET_SUPABASE_CLIENT: auth.uid() test result: {test_result.data}")
-                except Exception as test_e:
-                    logger.warning(f"⚠️ _GET_SUPABASE_CLIENT: auth.uid() test failed: {str(test_e)}")
+                # Set the Authorization header for all requests
+                # This is the correct way to pass JWT tokens to supabase-py for RLS
+                client.auth._headers = {"Authorization": f"Bearer {jwt}"}
                 
                 logger.info(f"✅ _GET_SUPABASE_CLIENT: Successfully created authenticated client")
                 return client
-            except Exception as e:
-                logger.error(f"❌ _GET_SUPABASE_CLIENT: Error with set_session_from_url: {str(e)}")
                 
-                # Fallback: manually set the auth header
-                try:
-                    client = create_client(supabase_url, supabase_key)
-                    # Manually set the Authorization header for all requests
-                    client.auth._headers = {"Authorization": f"Bearer {jwt}"}
-                    logger.info(f"✅ _GET_SUPABASE_CLIENT: Successfully created client with manual auth header")
-                    return client
-                except Exception as e2:
-                    logger.error(f"❌ _GET_SUPABASE_CLIENT: Error with manual auth header: {str(e2)}")
-                    
-                    # Final fallback: use service role key if available
-                    if self.supabase_admin:
-                        logger.warning(f"⚠️ _GET_SUPABASE_CLIENT: Using service role client as fallback")
-                        return self.supabase_admin
-                    else:
-                        logger.error(f"❌ _GET_SUPABASE_CLIENT: No fallback available")
-                        raise StorageError(f"Failed to create authenticated Supabase client: {str(e)}")
+            except Exception as e:
+                logger.error(f"❌ _GET_SUPABASE_CLIENT: Error creating authenticated client: {str(e)}")
+                
+                # Final fallback: use service role key if available
+                if self.supabase_admin:
+                    logger.warning(f"⚠️ _GET_SUPABASE_CLIENT: Using service role client as fallback")
+                    return self.supabase_admin
+                else:
+                    logger.error(f"❌ _GET_SUPABASE_CLIENT: No fallback available")
+                    raise StorageError(f"Failed to create authenticated Supabase client: {str(e)}")
         else:
             # Use default client with anon key
             logger.info(f"✅ _GET_SUPABASE_CLIENT: Using default anon client")
@@ -137,13 +120,6 @@ class Embedder:
         logger.info(f"🔍 CREATE_EMBEDDING_JOB: JWT provided: {bool(jwt)}")
         
         client = self._get_supabase_client(jwt)
-        
-        # Test auth.uid() before the insert
-        try:
-            auth_test = client.rpc("auth.uid").execute()
-            logger.info(f"🔍 CREATE_EMBEDDING_JOB: auth.uid() = {auth_test.data}")
-        except Exception as e:
-            logger.error(f"❌ CREATE_EMBEDDING_JOB: auth.uid() test failed: {str(e)}")
         
         try:
             result = client.table("embedding_jobs").insert({
@@ -188,13 +164,6 @@ class Embedder:
         logger.info(f"🔍 UPDATE_JOB_STATUS: JWT provided: {bool(jwt)}")
         
         client = self._get_supabase_client(jwt)
-        
-        # Test auth.uid() before the update
-        try:
-            auth_test = client.rpc("auth.uid").execute()
-            logger.info(f"🔍 UPDATE_JOB_STATUS: auth.uid() = {auth_test.data}")
-        except Exception as e:
-            logger.error(f"❌ UPDATE_JOB_STATUS: auth.uid() test failed: {str(e)}")
         
         try:
             update_data = {
@@ -454,13 +423,6 @@ class Embedder:
         
         client = self._get_supabase_client(jwt)
         
-        # Test auth.uid() before storing
-        try:
-            auth_test = client.rpc("auth.uid").execute()
-            logger.info(f"🔍 STORE_EMBEDDINGS: auth.uid() = {auth_test.data}")
-        except Exception as e:
-            logger.error(f"❌ STORE_EMBEDDINGS: auth.uid() test failed: {str(e)}")
-        
         document_ids = []
         
         for i, chunk in enumerate(document_chunks):
@@ -532,13 +494,6 @@ class Embedder:
                 logger.info(f"✅ SIMILARITY_SEARCH: Supabase client obtained")
                 logger.info(f"🔍 SIMILARITY_SEARCH: Client type: {type(client).__name__}")
                 logger.info(f"🔍 SIMILARITY_SEARCH: Client URL: {client.supabase_url}")
-                
-                # Test auth.uid() before the search
-                try:
-                    auth_test = client.rpc("auth.uid").execute()
-                    logger.info(f"🔍 SIMILARITY_SEARCH: auth.uid() = {auth_test.data}")
-                except Exception as e:
-                    logger.error(f"❌ SIMILARITY_SEARCH: auth.uid() test failed: {str(e)}")
                 
             except Exception as e:
                 logger.error(f"❌ SIMILARITY_SEARCH: STEP 2 FAILED - Error getting Supabase client: {str(e)}")
