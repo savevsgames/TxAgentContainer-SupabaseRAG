@@ -86,6 +86,13 @@ class Embedder:
                 # This properly sets the JWT token for all subsequent requests
                 client.auth.set_session_from_url(f"#access_token={jwt}&token_type=bearer")
                 
+                # Test if auth.uid() works after setting the session
+                try:
+                    test_result = client.rpc("auth.uid").execute()
+                    logger.info(f"🔍 _GET_SUPABASE_CLIENT: auth.uid() test result: {test_result.data}")
+                except Exception as test_e:
+                    logger.warning(f"⚠️ _GET_SUPABASE_CLIENT: auth.uid() test failed: {str(test_e)}")
+                
                 logger.info(f"✅ _GET_SUPABASE_CLIENT: Successfully created authenticated client")
                 return client
             except Exception as e:
@@ -126,7 +133,17 @@ class Embedder:
         Returns:
             Created job record
         """
+        logger.info(f"🔍 CREATE_EMBEDDING_JOB: Starting for user {user_id}")
+        logger.info(f"🔍 CREATE_EMBEDDING_JOB: JWT provided: {bool(jwt)}")
+        
         client = self._get_supabase_client(jwt)
+        
+        # Test auth.uid() before the insert
+        try:
+            auth_test = client.rpc("auth.uid").execute()
+            logger.info(f"🔍 CREATE_EMBEDDING_JOB: auth.uid() = {auth_test.data}")
+        except Exception as e:
+            logger.error(f"❌ CREATE_EMBEDDING_JOB: auth.uid() test failed: {str(e)}")
         
         try:
             result = client.table("embedding_jobs").insert({
@@ -136,9 +153,12 @@ class Embedder:
                 "user_id": user_id
             }).execute()
             
+            logger.info(f"✅ CREATE_EMBEDDING_JOB: Successfully created job {job_id}")
             return result.data[0] if result.data else None
         except Exception as e:
-            logger.error(f"Error creating embedding job: {str(e)}")
+            logger.error(f"❌ CREATE_EMBEDDING_JOB: Error creating embedding job: {str(e)}")
+            logger.error(f"❌ CREATE_EMBEDDING_JOB: Exception type: {type(e).__name__}")
+            logger.error(f"❌ CREATE_EMBEDDING_JOB: Exception details: {repr(e)}")
             raise
 
     async def update_job_status(
@@ -164,7 +184,17 @@ class Embedder:
         Returns:
             Updated job record
         """
+        logger.info(f"🔍 UPDATE_JOB_STATUS: Updating job {job_id} to {status}")
+        logger.info(f"🔍 UPDATE_JOB_STATUS: JWT provided: {bool(jwt)}")
+        
         client = self._get_supabase_client(jwt)
+        
+        # Test auth.uid() before the update
+        try:
+            auth_test = client.rpc("auth.uid").execute()
+            logger.info(f"🔍 UPDATE_JOB_STATUS: auth.uid() = {auth_test.data}")
+        except Exception as e:
+            logger.error(f"❌ UPDATE_JOB_STATUS: auth.uid() test failed: {str(e)}")
         
         try:
             update_data = {
@@ -185,9 +215,12 @@ class Embedder:
                 update_data
             ).eq("id", job_id).execute()
             
+            logger.info(f"✅ UPDATE_JOB_STATUS: Successfully updated job {job_id}")
             return result.data[0] if result.data else None
         except Exception as e:
-            logger.error(f"Error updating job status: {str(e)}")
+            logger.error(f"❌ UPDATE_JOB_STATUS: Error updating job status: {str(e)}")
+            logger.error(f"❌ UPDATE_JOB_STATUS: Exception type: {type(e).__name__}")
+            logger.error(f"❌ UPDATE_JOB_STATUS: Exception details: {repr(e)}")
             raise
 
     async def get_job_status(self, job_id: str, user_id: str) -> Optional[Dict[str, Any]]:
@@ -416,13 +449,24 @@ class Embedder:
         Returns:
             List of inserted document IDs
         """
-        logger.info(f"Storing {len(document_chunks)} embeddings for user {user_id}")
+        logger.info(f"🔍 STORE_EMBEDDINGS: Storing {len(document_chunks)} embeddings for user {user_id}")
+        logger.info(f"🔍 STORE_EMBEDDINGS: JWT provided: {bool(jwt)}")
         
         client = self._get_supabase_client(jwt)
+        
+        # Test auth.uid() before storing
+        try:
+            auth_test = client.rpc("auth.uid").execute()
+            logger.info(f"🔍 STORE_EMBEDDINGS: auth.uid() = {auth_test.data}")
+        except Exception as e:
+            logger.error(f"❌ STORE_EMBEDDINGS: auth.uid() test failed: {str(e)}")
+        
         document_ids = []
         
-        for chunk in document_chunks:
+        for i, chunk in enumerate(document_chunks):
             try:
+                logger.info(f"🔍 STORE_EMBEDDINGS: Storing chunk {i+1}/{len(document_chunks)}")
+                
                 # Insert document with embedding
                 result = client.table("documents").insert({
                     "content": chunk["content"],
@@ -434,12 +478,17 @@ class Embedder:
                 # Get the inserted document ID
                 if result.data and len(result.data) > 0:
                     document_ids.append(result.data[0]["id"])
+                    logger.info(f"✅ STORE_EMBEDDINGS: Stored chunk {i+1} with ID {result.data[0]['id']}")
+                else:
+                    logger.error(f"❌ STORE_EMBEDDINGS: No data returned for chunk {i+1}")
                     
             except Exception as e:
-                logger.error(f"Error storing embedding: {str(e)}")
+                logger.error(f"❌ STORE_EMBEDDINGS: Error storing chunk {i+1}: {str(e)}")
+                logger.error(f"❌ STORE_EMBEDDINGS: Exception type: {type(e).__name__}")
+                logger.error(f"❌ STORE_EMBEDDINGS: Exception details: {repr(e)}")
                 raise
         
-        logger.info(f"Stored {len(document_ids)} embeddings successfully")
+        logger.info(f"✅ STORE_EMBEDDINGS: Stored {len(document_ids)} embeddings successfully")
         return document_ids
 
     def similarity_search(self, query: str, user_id: str, top_k: int = 5, jwt: Optional[str] = None) -> List[Dict[str, Any]]:
@@ -483,6 +532,14 @@ class Embedder:
                 logger.info(f"✅ SIMILARITY_SEARCH: Supabase client obtained")
                 logger.info(f"🔍 SIMILARITY_SEARCH: Client type: {type(client).__name__}")
                 logger.info(f"🔍 SIMILARITY_SEARCH: Client URL: {client.supabase_url}")
+                
+                # Test auth.uid() before the search
+                try:
+                    auth_test = client.rpc("auth.uid").execute()
+                    logger.info(f"🔍 SIMILARITY_SEARCH: auth.uid() = {auth_test.data}")
+                except Exception as e:
+                    logger.error(f"❌ SIMILARITY_SEARCH: auth.uid() test failed: {str(e)}")
+                
             except Exception as e:
                 logger.error(f"❌ SIMILARITY_SEARCH: STEP 2 FAILED - Error getting Supabase client: {str(e)}")
                 logger.error(f"❌ SIMILARITY_SEARCH: Exception type: {type(e).__name__}")
