@@ -62,8 +62,8 @@ The TxAgent Medical RAG System is a comprehensive medical document processing an
 1. **Query**: User submits question via frontend
 2. **Authentication**: JWT token validated by TxAgent
 3. **Embedding**: Query converted to BioBERT embedding
-4. **Search**: Vector similarity search in user's documents
-5. **Context**: Relevant document chunks retrieved
+4. **Search**: Vector similarity search using `match_documents()` function
+5. **Context**: Relevant document chunks retrieved with RLS filtering
 6. **Generation**: OpenAI GPT generates contextual response
 7. **Response**: Answer with sources returned to user
 
@@ -75,6 +75,7 @@ The TxAgent Medical RAG System is a comprehensive medical document processing an
 ```sql
 CREATE TABLE documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  filename TEXT,
   content TEXT NOT NULL,
   embedding VECTOR(768),
   metadata JSONB DEFAULT '{}'::JSONB,
@@ -82,6 +83,13 @@ CREATE TABLE documents (
   created_at TIMESTAMPTZ DEFAULT now()
 );
 ```
+
+**Purpose**: Stores document chunks with their vector embeddings
+**Key Features**:
+- 768-dimensional BioBERT embeddings
+- User isolation via `user_id`
+- Metadata for source tracking
+- IVFFlat index for fast similarity search
 
 #### `embedding_jobs`
 ```sql
@@ -98,6 +106,13 @@ CREATE TABLE embedding_jobs (
 );
 ```
 
+**Purpose**: Tracks document processing jobs
+**Status Values**: `pending`, `processing`, `completed`, `failed`
+**Key Features**:
+- Background job tracking
+- Error logging and debugging
+- Progress monitoring
+
 #### `agents`
 ```sql
 CREATE TABLE agents (
@@ -110,6 +125,13 @@ CREATE TABLE agents (
   terminated_at TIMESTAMPTZ
 );
 ```
+
+**Purpose**: Manages TxAgent container sessions
+**Status Values**: `initializing`, `active`, `idle`, `terminated`
+**Key Features**:
+- Session lifecycle management
+- Container endpoint tracking
+- Activity monitoring
 
 ### Security Features
 - **Row Level Security (RLS)**: All tables enforce user-based data isolation
@@ -139,19 +161,24 @@ CREATE TABLE agents (
 
 #### 3. Vector Search (`match_documents` function)
 ```sql
-CREATE OR REPLACE FUNCTION match_documents(
+CREATE FUNCTION match_documents(
   query_embedding VECTOR(768),
-  match_threshold FLOAT,
-  match_count INT,
-  query_user_id UUID
-)
-RETURNS TABLE (
+  match_threshold FLOAT DEFAULT 0.5,
+  match_count INTEGER DEFAULT 5
+) RETURNS TABLE (
   id UUID,
+  filename TEXT,
   content TEXT,
   metadata JSONB,
   similarity FLOAT
 )
 ```
+
+**Key Features**:
+- Uses `SECURITY INVOKER` to respect RLS policies
+- Cosine similarity search with configurable threshold
+- Returns results ordered by similarity score
+- Automatic user data isolation
 
 #### 4. Authentication System (`auth.py`)
 - **JWT Validation**: Supabase token verification with audience validation
@@ -160,6 +187,18 @@ RETURNS TABLE (
   - Audience validation: `"aud": "authenticated"`
   - Expiration checking with clock skew tolerance
   - Comprehensive error logging for debugging
+
+**Current Implementation**:
+```python
+def _get_supabase_client(self, jwt: Optional[str] = None) -> Client:
+    if jwt:
+        client = create_client(supabase_url, supabase_key)
+        # Set Authorization header directly for RLS
+        client.auth._headers = {"Authorization": f"Bearer {jwt}"}
+        return client
+    else:
+        return self.supabase
+```
 
 #### 5. LLM Integration (`llm.py`)
 - **Provider**: OpenAI GPT-4 Turbo
@@ -177,22 +216,20 @@ RETURNS TABLE (
 **Payload**:
 ```json
 {
-  "file_path": "documents/user123/file.pdf",
+  "file_path": "path/to/document.pdf",
   "metadata": {
     "title": "Medical Research Paper",
     "author": "Dr. Smith",
-    "category": "cardiology"
+    "category": "oncology"
   }
 }
 ```
-**Response**:
-```json
-{
-  "job_id": "uuid-string",
-  "status": "pending",
-  "message": "Document is being processed"
-}
-```
+
+**Process**:
+1. Validate JWT and extract user ID
+2. Create embedding job record
+3. Schedule background processing task
+4. Return job ID for status tracking
 
 #### `POST /chat`
 **Purpose**: Generate responses based on document context
@@ -200,25 +237,18 @@ RETURNS TABLE (
 **Payload**:
 ```json
 {
-  "query": "What are the treatment options for hypertension?",
+  "query": "What treatments are available for lung cancer?",
   "top_k": 5,
   "temperature": 0.7
 }
 ```
-**Response**:
-```json
-{
-  "response": "Based on your documents, treatment options include...",
-  "sources": [
-    {
-      "content": "Document excerpt...",
-      "metadata": {"title": "Hypertension Guidelines"},
-      "similarity": 0.85
-    }
-  ],
-  "status": "success"
-}
-```
+
+**Process**:
+1. Validate JWT and extract user ID
+2. Create query embedding using BioBERT
+3. Perform similarity search with RLS filtering
+4. Generate response using OpenAI GPT
+5. Return response with source citations
 
 #### `GET /embedding-jobs/{job_id}`
 **Purpose**: Check processing status
@@ -320,37 +350,38 @@ DEBUG=False
 - **Error Handling**: Secure error messages without information leakage
 - **Audit Logging**: Comprehensive request/response logging for security monitoring
 
-## Recent Authentication Issues and Resolutions
+## Current Issues and Resolutions
 
-### Issue: Supabase Client Authentication Errors
+### Authentication Issues (RESOLVED)
 
-**Problem**: The system experienced `'dict' object has no attribute 'headers'` errors when creating authenticated Supabase clients.
+**Problem**: The system was experiencing RLS policy violations when creating embedding jobs.
 
 **Root Cause**: 
-1. JWT tokens were being passed incorrectly to Supabase client creation
-2. The `supabase-py` library doesn't accept custom headers in the constructor
-3. Request objects were being confused with JWT token strings
+1. JWT tokens were not properly establishing user context for RLS policies
+2. Complex authentication fallback mechanisms were causing confusion
+3. `auth.uid()` test calls were failing and causing unnecessary errors
 
 **Resolution**:
-1. **Proper JWT Token Passing**: Ensured JWT token strings (not Request objects) are passed to authentication methods
-2. **Correct Authentication Method**: Used `set_session_from_url()` for proper token authentication
-3. **Fallback Strategies**: Implemented multiple authentication approaches:
-   - Primary: `set_session_from_url()` with JWT token
-   - Fallback: Manual auth header setting
-   - Final fallback: Service role client for elevated permissions
-4. **Enhanced Logging**: Added comprehensive debugging for authentication flow
+1. **Simplified Authentication**: Removed complex fallback mechanisms
+2. **Direct Header Setting**: JWT tokens are set directly on Supabase client auth headers
+3. **Removed Test Calls**: Eliminated problematic `auth.uid()` test calls
+4. **Streamlined Flow**: Simplified authentication flow for better reliability
 
-**Code Changes**:
-```python
-# Before (incorrect)
-client = create_client(supabase_url, supabase_key, {
-    "Authorization": f"Bearer {jwt}"
-})
+### Database Migration Issues (IN PROGRESS)
 
-# After (correct)
-client = create_client(supabase_url, supabase_key)
-client.auth.set_session_from_url(f"#access_token={jwt}&token_type=bearer")
-```
+**Problem**: Multiple migration files creating duplicate functions and policies.
+
+**Root Cause**:
+1. 15+ migration files with overlapping functionality
+2. Duplicate `match_documents` functions with different signatures
+3. Duplicate RLS policies causing "already exists" errors
+4. Inconsistent schema state across environments
+
+**Resolution** (see `SUPABASE_MIGRATIONS.md`):
+1. **Migration Consolidation**: Create single consolidated migration
+2. **Clean Schema**: Drop all existing objects and recreate cleanly
+3. **Standardized Functions**: Single `match_documents` function signature
+4. **Proper RLS**: Working RLS policies with correct user isolation
 
 ## Deployment Architecture
 

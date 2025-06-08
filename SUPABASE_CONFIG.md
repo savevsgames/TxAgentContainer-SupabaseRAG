@@ -2,6 +2,10 @@
 
 This document provides a comprehensive overview of the Supabase database schema, policies, and functions for the Medical RAG Vector Uploader system.
 
+## Current Status: MIGRATION CONSOLIDATION NEEDED
+
+⚠️ **CRITICAL**: The database currently has **15+ migration files** creating duplicate objects and causing failures. See `SUPABASE_MIGRATIONS.md` for consolidation plan.
+
 ## Database Overview
 
 The system uses PostgreSQL with the `pgvector` extension for vector similarity search. All tables implement Row Level Security (RLS) to ensure users can only access their own data.
@@ -22,6 +26,7 @@ Stores document chunks with their vector embeddings for similarity search.
 ```sql
 CREATE TABLE documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  filename TEXT, -- Added for compatibility with match_documents function
   content TEXT NOT NULL,
   embedding VECTOR(768),
   metadata JSONB DEFAULT '{}'::JSONB,
@@ -32,6 +37,7 @@ CREATE TABLE documents (
 
 **Columns:**
 - `id`: Unique identifier for each document chunk
+- `filename`: Original filename (for function compatibility)
 - `content`: The actual text content of the document chunk
 - `embedding`: 768-dimensional vector embedding (BioBERT)
 - `metadata`: JSON metadata (title, author, chunk_index, etc.)
@@ -131,178 +137,78 @@ EXECUTE FUNCTION update_agent_last_active();
 
 All tables have RLS enabled with user-specific access policies.
 
-### Documents Table Policies
+### Current RLS Implementation
 
 ```sql
--- Enable RLS
+-- Enable RLS on all tables
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
-
--- Users can insert their own documents
-CREATE POLICY "Users can insert their own documents"
-  ON documents
-  FOR INSERT
-  TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-
--- Users can read their own documents
-CREATE POLICY "Users can read their own documents"
-  ON documents
-  FOR SELECT
-  TO authenticated
-  USING (auth.uid() = user_id);
-
--- Users can update their own documents
-CREATE POLICY "Users can update their own documents"
-  ON documents
-  FOR UPDATE
-  TO authenticated
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
-
--- Users can delete their own documents
-CREATE POLICY "Users can delete their own documents"
-  ON documents
-  FOR DELETE
-  TO authenticated
-  USING (auth.uid() = user_id);
-```
-
-### Embedding Jobs Table Policies
-
-```sql
--- Enable RLS
 ALTER TABLE embedding_jobs ENABLE ROW LEVEL SECURITY;
-
--- Users can insert their own embedding jobs
-CREATE POLICY "Users can insert their own embedding jobs"
-  ON embedding_jobs
-  FOR INSERT
-  TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-
--- Users can read their own embedding jobs
-CREATE POLICY "Users can read their own embedding jobs"
-  ON embedding_jobs
-  FOR SELECT
-  TO authenticated
-  USING (auth.uid() = user_id);
-
--- Users can update their own embedding jobs
-CREATE POLICY "Users can update their own embedding jobs"
-  ON embedding_jobs
-  FOR UPDATE
-  TO authenticated
-  USING (auth.uid() = user_id)
-  WITH CHECK (auth.uid() = user_id);
-
--- Users can delete their own embedding jobs
-CREATE POLICY "Users can delete their own embedding jobs"
-  ON embedding_jobs
-  FOR DELETE
-  TO authenticated
-  USING (auth.uid() = user_id);
-```
-
-### Agents Table Policies
-
-```sql
--- Enable RLS
 ALTER TABLE agents ENABLE ROW LEVEL SECURITY;
 
--- Users can insert their own agents
-CREATE POLICY "Users can insert their own agents"
-  ON agents
-  FOR INSERT
-  TO authenticated
-  WITH CHECK (auth.uid() = user_id);
-
--- Users can read their own agents
-CREATE POLICY "Users can read their own agents"
-  ON agents
-  FOR SELECT
-  TO authenticated
-  USING (auth.uid() = user_id);
-
--- Users can update their own agents
-CREATE POLICY "Users can update their own agents"
-  ON agents
-  FOR UPDATE
-  TO authenticated
+-- Simplified user isolation policies
+CREATE POLICY "documents_user_isolation" ON documents
+  FOR ALL TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
--- Users can delete their own agents
-CREATE POLICY "Users can delete their own agents"
-  ON agents
-  FOR DELETE
-  TO authenticated
-  USING (auth.uid() = user_id);
+CREATE POLICY "embedding_jobs_user_isolation" ON embedding_jobs
+  FOR ALL TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "agents_user_isolation" ON agents
+  FOR ALL TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 ```
 
 ## Database Functions
 
 ### 1. `match_documents` Function
 
-⚠️ **CRITICAL ISSUE IDENTIFIED**: This function needs to be updated to work properly with RLS and authenticated users.
+**Current Working Version** (from latest migration):
 
 ```sql
 CREATE OR REPLACE FUNCTION match_documents(
   query_embedding VECTOR(768),
-  match_threshold FLOAT,
-  match_count INT,
-  query_user_id UUID
-)
-RETURNS TABLE (
+  match_threshold FLOAT DEFAULT 0.5,
+  match_count INTEGER DEFAULT 5
+) RETURNS TABLE (
   id UUID,
+  filename TEXT,
   content TEXT,
   metadata JSONB,
   similarity FLOAT
-)
-LANGUAGE SQL STABLE
-SECURITY DEFINER
-AS $$
-  SELECT
-    documents.id,
-    documents.content,
-    documents.metadata,
-    1 - (documents.embedding <=> query_embedding) AS similarity
-  FROM documents
-  WHERE 1 - (documents.embedding <=> query_embedding) > match_threshold
-    AND documents.user_id = query_user_id
-  ORDER BY similarity DESC
-  LIMIT match_count;
-$$;
-```
-
-**⚠️ POTENTIAL ISSUE**: The function uses `SECURITY DEFINER` which bypasses RLS, but it manually filters by `query_user_id`. However, if the JWT authentication is not working properly, the `query_user_id` parameter might not be correctly passed or validated.
-
-**Alternative Implementation with RLS**:
-```sql
-CREATE OR REPLACE FUNCTION match_documents(
-  query_embedding VECTOR(768),
-  match_threshold FLOAT,
-  match_count INT
-)
-RETURNS TABLE (
-  id UUID,
-  content TEXT,
-  metadata JSONB,
-  similarity FLOAT
-)
-LANGUAGE SQL STABLE
+) 
+LANGUAGE plpgsql
 SECURITY INVOKER
+STABLE
 AS $$
+BEGIN
+  RETURN QUERY
   SELECT
-    documents.id,
-    documents.content,
-    documents.metadata,
-    1 - (documents.embedding <=> query_embedding) AS similarity
-  FROM documents
-  WHERE 1 - (documents.embedding <=> query_embedding) > match_threshold
+    d.id,
+    COALESCE(d.filename, 'Unknown Document') as filename,
+    d.content,
+    COALESCE(d.metadata, '{}'::jsonb) as metadata,
+    (1 - (d.embedding <=> query_embedding))::float AS similarity
+  FROM documents d
+  WHERE d.embedding IS NOT NULL 
+    AND d.content IS NOT NULL
+    AND d.content != ''
+    AND (1 - (d.embedding <=> query_embedding)) > match_threshold
   ORDER BY similarity DESC
   LIMIT match_count;
+END;
 $$;
 ```
+
+**Key Features**:
+- Uses `SECURITY INVOKER` to respect RLS policies
+- Returns documents filtered by user automatically
+- Includes filename for compatibility
+- Validates input parameters
+- Optimized for performance
 
 ### 2. `update_agent_last_active` Function
 
@@ -370,117 +276,45 @@ SUPABASE_JWT_SECRET=your-jwt-secret-here  # For JWT validation
 SUPABASE_STORAGE_BUCKET=documents
 ```
 
-## 🚨 CRITICAL AUTHENTICATION ISSUES IDENTIFIED
+## 🚨 CURRENT CRITICAL ISSUES
 
-### Issue 1: RLS Policy Dependency on JWT Authentication
+### Issue 1: RLS Policy Violations
 
-**Problem**: RLS policies use `auth.uid()` which requires proper JWT authentication context. If the Supabase client is not properly authenticated, `auth.uid()` returns NULL, causing all RLS policies to fail.
-
-**Current Error Pattern**: 
-- JWT token validation succeeds in TxAgent
-- Supabase client creation fails with `'dict' object has no attribute 'headers'`
-- Database queries fail because `auth.uid()` is NULL
-
-### Issue 2: Supabase Client Authentication Method
-
-**Problem**: The current implementation tries to pass JWT tokens incorrectly to the Supabase client.
-
-**Correct Implementation**:
-```python
-def _get_supabase_client(self, jwt: Optional[str] = None) -> Client:
-    if jwt:
-        client = create_client(supabase_url, supabase_key)
-        # Method 1: Set session from JWT
-        try:
-            client.auth.set_session_from_url(f"#access_token={jwt}&token_type=bearer")
-            return client
-        except:
-            # Method 2: Manual header setting
-            client.auth._headers = {"Authorization": f"Bearer {jwt}"}
-            return client
-    else:
-        return self.supabase
+**Problem**: Embed requests are failing with RLS policy violations:
+```
+Error: new row violates row-level security policy for table "embedding_jobs"
 ```
 
-### Issue 3: Function Parameter Mismatch
+**Root Cause**: JWT authentication is not properly establishing user context for RLS policies.
 
-**Problem**: The `match_documents` function expects `query_user_id` parameter, but if we use `SECURITY INVOKER` instead of `SECURITY DEFINER`, we don't need this parameter.
+**Status**: Partially resolved in `embedder.py` by simplifying authentication flow.
 
-**Recommended Fix**:
-```sql
--- Update the function to use SECURITY INVOKER and rely on RLS
-CREATE OR REPLACE FUNCTION match_documents(
-  query_embedding VECTOR(768),
-  match_threshold FLOAT DEFAULT 0.5,
-  match_count INT DEFAULT 5
-)
-RETURNS TABLE (
-  id UUID,
-  content TEXT,
-  metadata JSONB,
-  similarity FLOAT
-)
-LANGUAGE SQL STABLE
-SECURITY INVOKER
-AS $$
-  SELECT
-    documents.id,
-    documents.content,
-    documents.metadata,
-    1 - (documents.embedding <=> query_embedding) AS similarity
-  FROM documents
-  WHERE 1 - (documents.embedding <=> query_embedding) > match_threshold
-  ORDER BY similarity DESC
-  LIMIT match_count;
-$$;
+### Issue 2: Multiple Migration Files
+
+**Problem**: 15+ migration files creating duplicate objects:
+- Multiple `match_documents` functions with different signatures
+- Duplicate RLS policies causing "already exists" errors
+- Inconsistent schema state
+
+**Status**: Requires migration consolidation (see `SUPABASE_MIGRATIONS.md`).
+
+### Issue 3: Function Signature Mismatches
+
+**Problem**: Code calling wrong function signatures:
+```
+Error: function public.match_documents(vector) does not exist
 ```
 
-## 🔧 Recommended Fixes
+**Status**: Latest migration standardizes on single function signature.
 
-### 1. Update Database Function
-```sql
--- Drop the existing function
-DROP FUNCTION IF EXISTS match_documents(VECTOR(768), FLOAT, INT, UUID);
+## 🔧 RECOMMENDED IMMEDIATE FIXES
 
--- Create new function without user_id parameter (relies on RLS)
-CREATE OR REPLACE FUNCTION match_documents(
-  query_embedding VECTOR(768),
-  match_threshold FLOAT DEFAULT 0.5,
-  match_count INT DEFAULT 5
-)
-RETURNS TABLE (
-  id UUID,
-  content TEXT,
-  metadata JSONB,
-  similarity FLOAT
-)
-LANGUAGE SQL STABLE
-SECURITY INVOKER
-AS $$
-  SELECT
-    documents.id,
-    documents.content,
-    documents.metadata,
-    1 - (documents.embedding <=> query_embedding) AS similarity
-  FROM documents
-  WHERE 1 - (documents.embedding <=> query_embedding) > match_threshold
-  ORDER BY similarity DESC
-  LIMIT match_count;
-$$;
-```
+### 1. Consolidate Migrations
+- Create single consolidated migration
+- Drop all existing duplicate objects
+- Recreate clean schema
 
-### 2. Update TxAgent Code
-```python
-# In embedder.py, update the RPC call
-result = client.rpc("match_documents", {
-    "query_embedding": query_embedding,
-    "match_threshold": 0.5,
-    "match_count": top_k
-    # Remove query_user_id parameter
-}).execute()
-```
-
-### 3. Test RLS Policies
+### 2. Test Authentication Flow
 ```sql
 -- Test if auth.uid() works properly
 SELECT auth.uid();  -- Should return user UUID when authenticated
@@ -489,67 +323,43 @@ SELECT auth.uid();  -- Should return user UUID when authenticated
 SELECT COUNT(*) FROM documents;  -- Should only return user's documents
 ```
 
-## 🧪 Testing Authentication
-
-### Test JWT Token Validation
-```python
-# Test if JWT contains required claims
-import jwt
-token = "your_jwt_token_here"
-payload = jwt.decode(token, options={"verify_signature": False})
-print(f"User ID (sub): {payload.get('sub')}")
-print(f"Audience (aud): {payload.get('aud')}")
-print(f"Role: {payload.get('role')}")
-```
-
-### Test Supabase Client Authentication
-```python
-# Test if client is properly authenticated
-client = create_client(supabase_url, supabase_key)
-client.auth.set_session_from_url(f"#access_token={jwt_token}&token_type=bearer")
-
-# Test if auth.uid() works
-result = client.rpc("auth.uid").execute()
-print(f"Authenticated user ID: {result.data}")
-```
-
-## 📋 Migration Required
-
-To fix the authentication issues, run this migration:
-
+### 3. Verify Function Signature
 ```sql
--- Update match_documents function
-CREATE OR REPLACE FUNCTION match_documents(
-  query_embedding VECTOR(768),
-  match_threshold FLOAT DEFAULT 0.5,
-  match_count INT DEFAULT 5
-)
-RETURNS TABLE (
-  id UUID,
-  content TEXT,
-  metadata JSONB,
-  similarity FLOAT
-)
-LANGUAGE SQL STABLE
-SECURITY INVOKER
-AS $$
-  SELECT
-    documents.id,
-    documents.content,
-    documents.metadata,
-    1 - (documents.embedding <=> query_embedding) AS similarity
-  FROM documents
-  WHERE 1 - (documents.embedding <=> query_embedding) > match_threshold
-  ORDER BY similarity DESC
-  LIMIT match_count;
-$$;
+-- Check current function signature
+SELECT 
+  p.proname,
+  pg_get_function_arguments(p.oid) as args
+FROM pg_proc p
+JOIN pg_namespace n ON p.pronamespace = n.oid
+WHERE p.proname = 'match_documents' 
+AND n.nspname = 'public';
 ```
 
-## 🎯 Summary
+### 4. Update Application Code
+Ensure `embedder.py` calls the correct function signature:
+```python
+result = client.rpc("match_documents", {
+    "query_embedding": query_embedding,
+    "match_threshold": 0.5,
+    "match_count": top_k
+}).execute()
+```
 
-The main issue is likely in the combination of:
-1. **Incorrect Supabase client authentication** (fixed in recent updates)
-2. **Database function expecting user_id parameter** when it should rely on RLS
-3. **RLS policies requiring proper JWT context** which isn't being established
+## 📋 MIGRATION CONSOLIDATION PLAN
 
-The recommended fix is to update the `match_documents` function to use `SECURITY INVOKER` and rely on RLS policies instead of manual user filtering.
+See `SUPABASE_MIGRATIONS.md` for detailed consolidation plan including:
+
+1. **Analysis of all existing migrations**
+2. **Identification of duplicate objects**
+3. **Clean schema design**
+4. **Single consolidated migration file**
+5. **Testing and validation procedures**
+
+## 🎯 SUMMARY
+
+The main issues are:
+1. **Authentication**: JWT tokens not properly establishing user context for RLS
+2. **Migrations**: Multiple duplicate objects causing conflicts
+3. **Functions**: Inconsistent function signatures across migrations
+
+The solution is to consolidate all migrations into a single, clean migration that creates a working schema with proper authentication and user isolation.

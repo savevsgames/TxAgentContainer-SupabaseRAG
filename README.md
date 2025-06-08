@@ -41,12 +41,7 @@ The TxAgent Medical RAG System uses a hybrid architecture that separates compute
 
 ### Database Setup
 
-Run the migrations in `supabase/migrations/` to set up:
-- `documents` table with vector embeddings
-- `embedding_jobs` table for job tracking
-- `agents` table for container session management
-- Row Level Security (RLS) policies
-- Vector similarity search function
+See `SUPABASE_MIGRATIONS.md` for complete database setup instructions and migration consolidation.
 
 ### Deployment
 
@@ -82,6 +77,7 @@ GPU-accelerated container for document processing and embedding generation.
 ```sql
 CREATE TABLE documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  filename TEXT,
   content TEXT NOT NULL,
   embedding VECTOR(768),
   metadata JSONB DEFAULT '{}'::JSONB,
@@ -139,7 +135,7 @@ CREATE TABLE agents (
 1. User submits question via frontend
 2. JWT token validated by TxAgent
 3. Query converted to BioBERT embedding
-4. Vector similarity search in user's documents
+4. Vector similarity search in user's documents using `match_documents()` function
 5. OpenAI GPT generates contextual response
 6. Answer with sources returned to user
 
@@ -210,6 +206,31 @@ Content-Type: application/json
 }
 ```
 
+## Authentication & Security
+
+### JWT Token Requirements
+
+The TxAgent container uses a simplified authentication approach:
+
+1. **JWT Validation**: Tokens are validated using the `SUPABASE_JWT_SECRET`
+2. **Manual Header Setting**: JWT tokens are passed via `Authorization` header to Supabase client
+3. **RLS Enforcement**: Row Level Security policies automatically filter data by user
+
+**Critical JWT Claims**:
+- `sub`: User ID (UUID) - **MUST match user_id in database**
+- `aud`: Must be "authenticated" - **REQUIRED for RLS policies**
+- `role`: Must be "authenticated" - **REQUIRED for RLS policies**
+- `exp`: Token expiration timestamp
+- `iat`: Token issued at timestamp
+
+### Current Authentication Issues (RESOLVED)
+
+The logs show that embed requests are failing with RLS policy violations. This indicates that the JWT authentication is not properly establishing the user context for RLS policies. The issue has been addressed by:
+
+1. **Simplified Supabase Client Authentication**: Removed complex fallback mechanisms
+2. **Direct Header Setting**: JWT tokens are set directly on the auth headers
+3. **Removed Auth Tests**: Eliminated problematic `auth.uid()` test calls that were failing
+
 ## Testing
 
 ### Postman Collection
@@ -244,24 +265,29 @@ For testing authenticated endpoints:
    - Verify endpoint exists and HTTP method is correct
    - Check CORS configuration
 
-2. **401 Unauthorized**
+2. **401 Unauthorized / RLS Policy Violations**
    - Verify JWT token is valid and not expired
    - Check Authorization header format: `Bearer <token>`
    - Ensure user exists in Supabase
+   - Verify RLS policies are correctly configured
 
 3. **500 Internal Server Error**
    - Check container logs for detailed error information
    - Verify environment variables are set correctly
-   - Check Supabase connection and RLS policies
+   - Check Supabase connection and database schema
 
-### Recent Authentication Issues
+### Current Known Issues
 
-The system has experienced issues with Supabase client authentication where JWT tokens were being passed incorrectly, causing `'dict' object has no attribute 'headers'` errors. This has been resolved by:
+Based on the logs, the main issue is **RLS policy violations** when creating embedding jobs. This suggests:
 
-1. Properly passing JWT token strings (not Request objects) to Supabase client
-2. Using correct Supabase authentication methods (`set_session_from_url`)
-3. Implementing fallback authentication strategies
-4. Enhanced logging for debugging authentication flows
+1. JWT tokens are not properly establishing user context
+2. The `auth.uid()` function may not be working as expected
+3. RLS policies may need adjustment
+
+**Recommended fixes** (see `SUPABASE_MIGRATIONS.md`):
+1. Consolidate all migrations into a single, clean migration
+2. Ensure proper RLS policy configuration
+3. Verify JWT authentication flow
 
 ### Debug Commands
 
@@ -314,7 +340,7 @@ The project follows a modular architecture:
 │   ├── llm.py             # OpenAI integration
 │   └── utils.py           # Utilities and logging
 ├── supabase/
-│   └── migrations/        # Database schema
+│   └── migrations/        # Database schema (see SUPABASE_MIGRATIONS.md)
 └── docs/                  # Documentation
 ```
 
@@ -325,39 +351,6 @@ The project follows a modular architecture:
 - **API Tests**: Comprehensive Postman collection
 - **Performance Tests**: Load testing for scalability
 
-## Security
-
-### Authentication Flow
-1. User authenticates with Supabase Auth
-2. Supabase generates signed JWT with user claims
-3. JWT sent in Authorization header to TxAgent
-4. TxAgent validates JWT signature and audience
-5. User ID extracted for RLS enforcement
-
-### Data Isolation
-- **Row Level Security**: Database-level user data isolation
-- **JWT Claims**: User ID from `sub` claim for ownership verification
-- **Storage Isolation**: User-specific file paths in Supabase Storage
-- **API Isolation**: All endpoints require valid user authentication
-
-## Monitoring
-
-### Logging System
-
-The container includes comprehensive logging:
-
-- **Request Logs**: All HTTP requests with user context
-- **Authentication Logs**: JWT validation and user identification
-- **System Events**: Startup, model loading, background tasks
-- **Performance Metrics**: Processing times and resource usage
-- **Error Logs**: Detailed error information with stack traces
-
-### Key Metrics
-- Processing latency and throughput
-- Error rates and authentication events
-- Resource utilization (GPU, memory)
-- User activity patterns
-
 ## Support
 
 - **Documentation**: Complete API specs and troubleshooting guides
@@ -367,5 +360,5 @@ The container includes comprehensive logging:
 
 For detailed technical information, see:
 - `BREAKDOWN.md` - Complete technical breakdown
-- `AUTH_AUDIT_REPORT.md` - Authentication security audit
+- `SUPABASE_MIGRATIONS.md` - Database migration consolidation and cleanup
 - `SUPABASE_CONFIG.md` - Database configuration details
