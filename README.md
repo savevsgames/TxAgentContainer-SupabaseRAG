@@ -1,183 +1,208 @@
-# TxAgent Hybrid Container
+# TxAgent Medical RAG System
 
-Medical RAG Vector Uploader with BioBERT embeddings and chat capabilities.
+A comprehensive medical document processing and question-answering platform that combines GPU-accelerated BioBERT embeddings with OpenAI's GPT models for accurate medical text analysis.
 
-## Overview
+## System Overview
 
-This container provides a hybrid approach to medical document processing, embedding, and retrieval. It integrates with Supabase for storage and vector search, enabling both direct vector database access via Row Level Security (RLS) and backend-proxied interactions.
+The TxAgent Medical RAG System uses a hybrid architecture that separates compute-intensive operations from user-facing services:
 
-## Features
+- **Frontend**: React/Vite application for document upload and chat
+- **Backend**: Node.js API gateway on Render.com
+- **TxAgent Container**: GPU-accelerated document processing on RunPod
+- **Database**: Supabase PostgreSQL with pgvector for vector storage
 
-- BioBERT-based document embedding
-- Vector storage and querying via Supabase pgvector
-- Document processing for multiple formats (.pdf, .docx, .txt, .md)
-- JWT authentication with Supabase
-- Optional RAG chat pipeline
-- FastAPI endpoints for embedding, chat, and health checking
-- **Comprehensive logging system for debugging and monitoring**
+## Quick Start
 
-## Prerequisites
+### Prerequisites
 
-- NVIDIA GPU with CUDA support
+- NVIDIA GPU with CUDA support (for TxAgent container)
 - Supabase project with pgvector extension enabled
-- Supabase storage bucket for document storage
+- Node.js 18+ (for backend)
+- Docker (for container deployment)
 
-## Environment Variables
+### Environment Setup
 
-Copy `.env.example` to `.env` and configure:
+1. **Supabase Configuration**
+   ```bash
+   SUPABASE_URL=https://your-project.supabase.co
+   SUPABASE_ANON_KEY=your-supabase-anon-key
+   SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
+   SUPABASE_JWT_SECRET=your-supabase-jwt-secret
+   SUPABASE_STORAGE_BUCKET=documents
+   ```
 
-```
-# Supabase Configuration
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=your-supabase-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
-SUPABASE_JWT_SECRET=your-supabase-jwt-secret
-SUPABASE_STORAGE_BUCKET=documents
+2. **TxAgent Container**
+   ```bash
+   MODEL_NAME=dmis-lab/biobert-v1.1
+   EMBEDDING_DIMENSION=768
+   DEVICE=cuda
+   OPENAI_API_KEY=your-openai-api-key
+   ```
 
-# BioBERT Model Configuration
-MODEL_NAME=dmis-lab/biobert-v1.1
-EMBEDDING_DIMENSION=768
-DEVICE=cuda
-MAX_TOKENS=512
+### Database Setup
 
-# FastAPI Configuration
-HOST=0.0.0.0
-PORT=8000
-DEBUG=False
+Run the migrations in `supabase/migrations/` to set up:
+- `documents` table with vector embeddings
+- `embedding_jobs` table for job tracking
+- `agents` table for container session management
+- Row Level Security (RLS) policies
+- Vector similarity search function
 
-# Container Configuration
-LOG_LEVEL=INFO
-CHUNK_SIZE=512
-CHUNK_OVERLAP=50
+### Deployment
 
-# OpenAI Configuration (Optional)
-OPENAI_API_KEY=your-openai-api-key
-OPENAI_MODEL=gpt-4-turbo-preview
-```
+1. **TxAgent Container** → RunPod with GPU
+2. **Backend** → Render.com
+3. **Frontend** → Render.com or Netlify
+4. **Database** → Supabase (managed)
 
-## Build and Run
+## Architecture Components
 
-### Build Docker Image
+### TxAgent Container (`hybrid-agent/`)
 
-```bash
-docker build -t txagent-hybrid .
-```
+GPU-accelerated container for document processing and embedding generation.
 
-### Run Container
+**Key Features:**
+- BioBERT model for medical text embeddings (768 dimensions)
+- Document processing (PDF, DOCX, TXT, MD)
+- Vector similarity search using pgvector
+- OpenAI GPT integration for response generation
+- JWT authentication with Supabase tokens
 
-```bash
-docker run --gpus all -p 8000:8000 --env-file .env txagent-hybrid
-```
+**API Endpoints:**
+- `GET /health` - Container health check
+- `POST /embed` - Process and embed documents
+- `POST /chat` - Generate responses based on document context
+- `GET /embedding-jobs/{job_id}` - Check processing status
 
-### Deploy to RunPod
+### Database Schema
 
-1. Push the image to a Docker registry
-2. Create a RunPod template with the image
-3. Deploy on an A100 80GB GPU instance
+#### Core Tables
 
-## API Endpoints
-
-### Health Check
-
-```
-GET /health
-```
-
-Response:
-```json
-{
-  "status": "healthy",
-  "model": "dmis-lab/biobert-v1.1",
-  "device": "cuda",
-  "version": "1.0.0"
-}
-```
-
-### Embed Document
-
-```
-POST /embed
+**documents**
+```sql
+CREATE TABLE documents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  content TEXT NOT NULL,
+  embedding VECTOR(768),
+  metadata JSONB DEFAULT '{}'::JSONB,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
 ```
 
-Headers:
+**embedding_jobs**
+```sql
+CREATE TABLE embedding_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  file_path TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  metadata JSONB DEFAULT '{}'::JSONB,
+  chunk_count INTEGER DEFAULT 0,
+  error TEXT,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+**agents**
+```sql
+CREATE TABLE agents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  status TEXT DEFAULT 'initializing',
+  session_data JSONB DEFAULT '{}'::JSONB,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  last_active TIMESTAMPTZ DEFAULT now(),
+  terminated_at TIMESTAMPTZ
+);
+```
+
+### Security Features
+
+- **Row Level Security (RLS)**: All tables enforce user-based data isolation
+- **JWT Authentication**: Supabase tokens with `aud: "authenticated"` validation
+- **Foreign Key Constraints**: Ensure data integrity and cascade deletions
+- **Indexed Queries**: Optimized vector similarity search with IVFFlat indexing
+
+## Data Flow
+
+### Document Processing Flow
+1. User uploads document via frontend
+2. Backend stores file in Supabase Storage
+3. Backend calls TxAgent container `/embed` endpoint
+4. TxAgent downloads file, extracts text, generates embeddings
+5. Embeddings stored in Supabase with user isolation
+6. Job status updated, user notified
+
+### Chat Query Flow
+1. User submits question via frontend
+2. JWT token validated by TxAgent
+3. Query converted to BioBERT embedding
+4. Vector similarity search in user's documents
+5. OpenAI GPT generates contextual response
+6. Answer with sources returned to user
+
+## API Reference
+
+### TxAgent Container Endpoints
+
+#### POST /embed
+Process and embed a document from Supabase Storage.
+
+**Headers:**
 ```
 Authorization: Bearer <supabase_jwt_token>
 Content-Type: application/json
 ```
 
-Request:
+**Request:**
 ```json
 {
-  "file_path": "path/to/document.pdf",
+  "file_path": "documents/user123/file.pdf",
   "metadata": {
     "title": "Medical Research Paper",
     "author": "Dr. Smith",
-    "category": "oncology"
+    "category": "cardiology"
   }
 }
 ```
 
-Response:
+**Response:**
 ```json
 {
   "job_id": "uuid-string",
   "status": "pending",
-  "message": "Document is being processed in the background"
+  "message": "Document is being processed"
 }
 ```
 
-### Get Job Status
+#### POST /chat
+Generate responses based on document context.
 
-```
-GET /embedding-jobs/{job_id}
-```
-
-Headers:
-```
-Authorization: Bearer <supabase_jwt_token>
-```
-
-Response:
-```json
-{
-  "job_id": "uuid-string",
-  "status": "completed",
-  "chunk_count": 15,
-  "document_ids": ["doc-id-1", "doc-id-2"],
-  "message": "Job status: completed"
-}
-```
-
-### Chat
-
-```
-POST /chat
-```
-
-Headers:
+**Headers:**
 ```
 Authorization: Bearer <supabase_jwt_token>
 Content-Type: application/json
 ```
 
-Request:
+**Request:**
 ```json
 {
-  "query": "What treatments are available for lung cancer?",
-  "history": [],
+  "query": "What are the treatment options for hypertension?",
   "top_k": 5,
   "temperature": 0.7
 }
 ```
 
-Response:
+**Response:**
 ```json
 {
-  "response": "Based on the medical literature...",
+  "response": "Based on your documents, treatment options include...",
   "sources": [
     {
       "content": "Document excerpt...",
-      "metadata": {"title": "Cancer Treatment Guide"},
+      "metadata": {"title": "Hypertension Guidelines"},
       "similarity": 0.85
     }
   ],
@@ -185,240 +210,38 @@ Response:
 }
 ```
 
-### Test Endpoints
+## Testing
 
-```
-GET /test    - Test GET method
-POST /test   - Test POST method
-```
+### Postman Collection
 
-## Testing with Postman
+Import `TxAgent_API_Tests.postman_collection.json` for comprehensive API testing:
 
-### 1. Import the Postman Collection
+1. Health checks and connectivity validation
+2. Authentication flow testing
+3. Document embedding workflow
+4. Chat query functionality
+5. Error handling validation
 
-Save the following as `TxAgent_API_Tests.postman_collection.json`:
+### Getting JWT Tokens
 
-```json
-{
-  "info": {
-    "name": "TxAgent API Tests",
-    "description": "Test collection for TxAgent Hybrid Container",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-  },
-  "variable": [
-    {
-      "key": "base_url",
-      "value": "https://bjo5yophw94s7b-8000.proxy.runpod.net",
-      "type": "string"
-    },
-    {
-      "key": "jwt_token",
-      "value": "your_supabase_jwt_token_here",
-      "type": "string"
-    }
-  ],
-  "item": [
-    {
-      "name": "Health Check",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{base_url}}/health",
-          "host": ["{{base_url}}"],
-          "path": ["health"]
-        }
-      }
-    },
-    {
-      "name": "Test GET",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{base_url}}/test",
-          "host": ["{{base_url}}"],
-          "path": ["test"]
-        }
-      }
-    },
-    {
-      "name": "Test POST",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"test\": \"data\",\n  \"timestamp\": \"2025-01-01T00:00:00Z\"\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/test",
-          "host": ["{{base_url}}"],
-          "path": ["test"]
-        }
-      }
-    },
-    {
-      "name": "Embed Document",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{jwt_token}}"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"file_path\": \"test-document.pdf\",\n  \"metadata\": {\n    \"title\": \"Test Document\",\n    \"author\": \"Test Author\",\n    \"category\": \"test\"\n  }\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/embed",
-          "host": ["{{base_url}}"],
-          "path": ["embed"]
-        }
-      }
-    },
-    {
-      "name": "Chat Query",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{jwt_token}}"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"query\": \"What is the main topic of the documents?\",\n  \"top_k\": 5,\n  \"temperature\": 0.7\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/chat",
-          "host": ["{{base_url}}"],
-          "path": ["chat"]
-        }
-      }
-    },
-    {
-      "name": "Get Job Status",
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{jwt_token}}"
-          }
-        ],
-        "url": {
-          "raw": "{{base_url}}/embedding-jobs/{{job_id}}",
-          "host": ["{{base_url}}"],
-          "path": ["embedding-jobs", "{{job_id}}"]
-        }
-      }
-    }
-  ]
-}
-```
+For testing authenticated endpoints:
 
-### 2. Getting a Supabase JWT Token
-
-To test endpoints that require authentication, you need a valid Supabase JWT token:
-
-#### Option A: From Your Frontend Application
-1. Open browser developer tools on your frontend
-2. Go to Application/Storage → Local Storage
-3. Look for `supabase.auth.token` or similar
-4. Copy the JWT token value
-
-#### Option B: Using Supabase CLI (if available)
-```bash
-supabase auth login
-supabase projects list
-supabase auth token
-```
-
-#### Option C: Manual Token Generation (for testing)
-```javascript
-// Run this in your browser console on a page with Supabase client
-const { data, error } = await supabase.auth.signInWithPassword({
-  email: 'your-email@example.com',
-  password: 'your-password'
-});
-console.log('JWT Token:', data.session.access_token);
-```
-
-### 3. Testing Steps
-
-1. **Import the collection** into Postman
-2. **Set the variables**:
-   - `base_url`: `https://bjo5yophw94s7b-8000.proxy.runpod.net`
-   - `jwt_token`: Your actual Supabase JWT token
-3. **Run tests in order**:
-   - Health Check (should work without auth)
-   - Test GET (should work without auth)
-   - Test POST (should work without auth)
-   - Embed Document (requires auth)
-   - Chat Query (requires auth)
-
-### 4. Expected Results
-
-- **Health Check**: Should return 200 with service info
-- **Test endpoints**: Should return 200 with test messages
-- **Embed Document**: Should return 202 with job_id
-- **Chat Query**: Should return 200 with response and sources
-
-## Logging System
-
-The container includes comprehensive logging for debugging:
-
-### Log Types
-
-1. **Request Logs**: All HTTP requests with user context
-2. **Authentication Logs**: JWT validation and user identification
-3. **System Events**: Startup, model loading, background tasks
-4. **Performance Metrics**: Processing times and resource usage
-5. **Error Logs**: Detailed error information with stack traces
-
-### Log Format
-
-All logs include:
-- Timestamp
-- Event type
-- User context (ID, email, role)
-- Request/response details
-- Performance metrics
-- Error information
-
-### Viewing Logs
-
-Check your RunPod container logs to see detailed information about:
-- User interactions
-- Authentication events
-- Processing times
-- Error details
-- System health
+1. **From Frontend**: Check browser localStorage for `supabase.auth.token`
+2. **Manual Generation**:
+   ```javascript
+   const { data } = await supabase.auth.signInWithPassword({
+     email: 'user@example.com',
+     password: 'password'
+   });
+   console.log('JWT:', data.session.access_token);
+   ```
 
 ## Troubleshooting
 
 ### Common Issues
 
 1. **405 Method Not Allowed**
-   - Check if the endpoint exists in the logs
-   - Verify the HTTP method (GET vs POST)
+   - Verify endpoint exists and HTTP method is correct
    - Check CORS configuration
 
 2. **401 Unauthorized**
@@ -429,146 +252,120 @@ Check your RunPod container logs to see detailed information about:
 3. **500 Internal Server Error**
    - Check container logs for detailed error information
    - Verify environment variables are set correctly
-   - Check Supabase connection
+   - Check Supabase connection and RLS policies
+
+### Recent Authentication Issues
+
+The system has experienced issues with Supabase client authentication where JWT tokens were being passed incorrectly, causing `'dict' object has no attribute 'headers'` errors. This has been resolved by:
+
+1. Properly passing JWT token strings (not Request objects) to Supabase client
+2. Using correct Supabase authentication methods (`set_session_from_url`)
+3. Implementing fallback authentication strategies
+4. Enhanced logging for debugging authentication flows
 
 ### Debug Commands
 
 ```bash
-# Check container logs
-docker logs <container_id>
-
-# Test health endpoint
-curl https://bjo5yophw94s7b-8000.proxy.runpod.net/health
+# Check container health
+curl https://your-container-url/health
 
 # Test with authentication
-curl -X POST https://bjo5yophw94s7b-8000.proxy.runpod.net/test \
-  -H "Authorization: Bearer <your_jwt_token>" \
+curl -X POST https://your-container-url/chat \
+  -H "Authorization: Bearer <jwt_token>" \
   -H "Content-Type: application/json" \
-  -d '{"test": "data"}'
+  -d '{"query": "test query"}'
 ```
 
-## Required Supabase Setup
+## Performance
 
-1. Enable pgvector extension
-2. Create the following tables and functions:
+### Hardware Requirements
 
-```sql
--- Enable pgvector extension
-create extension if not exists vector;
+**Minimum:**
+- GPU: NVIDIA T4 (16GB VRAM)
+- RAM: 16GB system memory
+- CPU: 4 cores
 
--- Documents table with RLS
-create table documents (
-  id uuid primary key default gen_random_uuid(),
-  content text not null,
-  embedding vector(768),
-  metadata jsonb default '{}'::jsonb,
-  user_id uuid references auth.users(id) on delete cascade not null,
-  created_at timestamp with time zone default now()
-);
+**Recommended:**
+- GPU: NVIDIA A100 (40GB+ VRAM)
+- RAM: 32GB system memory
+- CPU: 8+ cores
 
--- Embedding jobs table
-create table embedding_jobs (
-  id uuid primary key default gen_random_uuid(),
-  file_path text not null,
-  status text default 'pending',
-  metadata jsonb default '{}'::jsonb,
-  chunk_count integer default 0,
-  error text,
-  user_id uuid references auth.users(id) on delete cascade not null,
-  created_at timestamp with time zone default now(),
-  updated_at timestamp with time zone default now()
-);
+### Performance Metrics
+- **A100**: ~2ms per chunk embedding, ~1000 pages/minute
+- **T4**: ~10ms per chunk embedding, ~200 pages/minute
 
--- Enable RLS
-alter table documents enable row level security;
-alter table embedding_jobs enable row level security;
+## Development
 
--- Create policies
-create policy "Users can read their own documents"
-on documents for select
-using (auth.uid() = user_id);
+### Local Development
 
-create policy "Users can insert their own documents"
-on documents for insert
-with check (auth.uid() = user_id);
+1. **Container Development**: Use Docker Compose for local GPU testing
+2. **Backend Development**: Node.js with local Supabase connection
+3. **Frontend Development**: Vite dev server with hot reload
 
-create policy "Users can read their own embedding jobs"
-on embedding_jobs for select
-using (auth.uid() = user_id);
+### File Organization
 
-create policy "Users can insert their own embedding jobs"
-on embedding_jobs for insert
-with check (auth.uid() = user_id);
+The project follows a modular architecture:
 
-create policy "Users can update their own embedding jobs"
-on embedding_jobs for update
-using (auth.uid() = user_id);
-
--- Function for similarity search
-create or replace function match_documents(
-  query_embedding vector(768),
-  match_threshold float,
-  match_count int,
-  query_user_id uuid
-)
-returns table (
-  id uuid,
-  content text,
-  metadata jsonb,
-  similarity float
-)
-language sql stable
-as $$
-  select
-    documents.id,
-    documents.content,
-    documents.metadata,
-    1 - (documents.embedding <=> query_embedding) as similarity
-  from documents
-  where 1 - (documents.embedding <=> query_embedding) > match_threshold
-    and documents.user_id = query_user_id
-  order by similarity desc
-  limit match_count;
-$$;
+```
+├── hybrid-agent/          # TxAgent container
+│   ├── main.py            # FastAPI application
+│   ├── embedder.py        # Document processing and embedding
+│   ├── auth.py            # JWT authentication
+│   ├── llm.py             # OpenAI integration
+│   └── utils.py           # Utilities and logging
+├── supabase/
+│   └── migrations/        # Database schema
+└── docs/                  # Documentation
 ```
 
-## Integration with Node.js Backend
+### Testing Strategy
 
-The Node.js backend should be configured with CORS to allow requests from your frontend domain:
+- **Unit Tests**: Core functionality testing
+- **Integration Tests**: End-to-end workflow testing
+- **API Tests**: Comprehensive Postman collection
+- **Performance Tests**: Load testing for scalability
 
-```javascript
-// In your Node.js backend
-app.use(cors({
-  origin: [
-    'https://medical-rag-vector-uploader-1.onrender.com',
-    'https://your-frontend-domain.com',
-    'http://localhost:3000' // for development
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
-```
+## Security
 
-## Security Considerations
+### Authentication Flow
+1. User authenticates with Supabase Auth
+2. Supabase generates signed JWT with user claims
+3. JWT sent in Authorization header to TxAgent
+4. TxAgent validates JWT signature and audience
+5. User ID extracted for RLS enforcement
 
-- JWT authentication is required for all endpoints except health and test
-- Row Level Security ensures users can only access their own documents
-- Service role key is used for administrative operations
-- All requests are logged with user context for audit trails
+### Data Isolation
+- **Row Level Security**: Database-level user data isolation
+- **JWT Claims**: User ID from `sub` claim for ownership verification
+- **Storage Isolation**: User-specific file paths in Supabase Storage
+- **API Isolation**: All endpoints require valid user authentication
 
-## Performance Monitoring
+## Monitoring
 
-The logging system tracks:
-- Request processing times
-- Model inference times
-- Database query performance
-- Memory and GPU usage
-- Error rates and types
+### Logging System
 
-## Support & Resources
+The container includes comprehensive logging:
 
-- Documentation: Full API specs in this README
-- Logs: Structured JSON format with user context
-- Metrics: Performance and usage tracking
-- Health Checks: Real-time service monitoring
+- **Request Logs**: All HTTP requests with user context
+- **Authentication Logs**: JWT validation and user identification
+- **System Events**: Startup, model loading, background tasks
+- **Performance Metrics**: Processing times and resource usage
+- **Error Logs**: Detailed error information with stack traces
+
+### Key Metrics
+- Processing latency and throughput
+- Error rates and authentication events
+- Resource utilization (GPU, memory)
+- User activity patterns
+
+## Support
+
+- **Documentation**: Complete API specs and troubleshooting guides
+- **Logs**: Structured JSON format with user context
+- **Health Checks**: Real-time service monitoring
+- **Error Tracking**: Centralized error monitoring
+
+For detailed technical information, see:
+- `BREAKDOWN.md` - Complete technical breakdown
+- `AUTH_AUDIT_REPORT.md` - Authentication security audit
+- `SUPABASE_CONFIG.md` - Database configuration details

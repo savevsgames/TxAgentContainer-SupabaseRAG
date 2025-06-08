@@ -253,7 +253,7 @@ RETURNS TABLE (
 ```bash
 # Supabase Configuration
 SUPABASE_URL=https://bfjfjxzdjhraabputkqi.supabase.co
-SUPABASE_KEY=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...  # anon key
+SUPABASE_ANON_KEY=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...  # anon key
 SUPABASE_SERVICE_ROLE_KEY=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...  # service role
 SUPABASE_JWT_SECRET=aGA7EVBjss...ZwVtVtDQ==  # Critical for JWT validation
 SUPABASE_STORAGE_BUCKET=documents
@@ -319,6 +319,38 @@ DEBUG=False
 - **Input Validation**: Comprehensive request payload validation
 - **Error Handling**: Secure error messages without information leakage
 - **Audit Logging**: Comprehensive request/response logging for security monitoring
+
+## Recent Authentication Issues and Resolutions
+
+### Issue: Supabase Client Authentication Errors
+
+**Problem**: The system experienced `'dict' object has no attribute 'headers'` errors when creating authenticated Supabase clients.
+
+**Root Cause**: 
+1. JWT tokens were being passed incorrectly to Supabase client creation
+2. The `supabase-py` library doesn't accept custom headers in the constructor
+3. Request objects were being confused with JWT token strings
+
+**Resolution**:
+1. **Proper JWT Token Passing**: Ensured JWT token strings (not Request objects) are passed to authentication methods
+2. **Correct Authentication Method**: Used `set_session_from_url()` for proper token authentication
+3. **Fallback Strategies**: Implemented multiple authentication approaches:
+   - Primary: `set_session_from_url()` with JWT token
+   - Fallback: Manual auth header setting
+   - Final fallback: Service role client for elevated permissions
+4. **Enhanced Logging**: Added comprehensive debugging for authentication flow
+
+**Code Changes**:
+```python
+# Before (incorrect)
+client = create_client(supabase_url, supabase_key, {
+    "Authorization": f"Bearer {jwt}"
+})
+
+# After (correct)
+client = create_client(supabase_url, supabase_key)
+client.auth.set_session_from_url(f"#access_token={jwt}&token_type=bearer")
+```
 
 ## Deployment Architecture
 
