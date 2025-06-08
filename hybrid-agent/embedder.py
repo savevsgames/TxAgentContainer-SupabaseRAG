@@ -63,13 +63,34 @@ class Embedder:
         Returns:
             Supabase client instance
         """
+        logger.info(f"🔍 _GET_SUPABASE_CLIENT: Creating client with JWT: {bool(jwt)}")
+        
         if jwt:
-            # Create a new client with the provided JWT
-            return create_client(supabase_url, supabase_key, {
-                "Authorization": f"Bearer {jwt}"
-            })
+            logger.info(f"🔍 _GET_SUPABASE_CLIENT: JWT token length: {len(jwt)}")
+            logger.info(f"🔍 _GET_SUPABASE_CLIENT: JWT token preview: {jwt[:50]}...")
+            
+            # Create a new client with the provided JWT in the correct format
+            # The supabase-py library expects headers to be nested under 'headers' key
+            options = {
+                "headers": {
+                    "Authorization": f"Bearer {jwt}"
+                }
+            }
+            
+            logger.info(f"🔍 _GET_SUPABASE_CLIENT: Options structure: {options}")
+            
+            try:
+                client = create_client(supabase_url, supabase_key, options)
+                logger.info(f"✅ _GET_SUPABASE_CLIENT: Successfully created authenticated client")
+                return client
+            except Exception as e:
+                logger.error(f"❌ _GET_SUPABASE_CLIENT: Error creating authenticated client: {str(e)}")
+                logger.error(f"❌ _GET_SUPABASE_CLIENT: Exception type: {type(e).__name__}")
+                logger.error(f"❌ _GET_SUPABASE_CLIENT: Exception details: {repr(e)}")
+                raise StorageError(f"Failed to create authenticated Supabase client: {str(e)}")
         else:
             # Use default client with anon key
+            logger.info(f"✅ _GET_SUPABASE_CLIENT: Using default anon client")
             return self.supabase
 
     async def create_embedding_job(self, job_id: str, file_path: str, user_id: str) -> Dict[str, Any]:
