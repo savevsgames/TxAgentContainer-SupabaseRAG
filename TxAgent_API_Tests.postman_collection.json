@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "TxAgent API Tests - Complete",
-    "description": "Complete test collection for TxAgent Hybrid Container including agent management",
+    "name": "TxAgent Medical RAG API Tests",
+    "description": "Comprehensive test collection for TxAgent Hybrid Container with realistic medical document testing",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -49,7 +49,9 @@
               "    pm.expect(jsonData).to.have.property('model');",
               "    pm.expect(jsonData).to.have.property('device');",
               "    pm.expect(jsonData).to.have.property('version');",
-              "});"
+              "});",
+              "",
+              "console.log(\"✅ Health check successful - TxAgent container is running\");"
             ],
             "type": "text/javascript"
           }
@@ -80,7 +82,9 @@
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('message');",
               "    pm.expect(jsonData.message).to.include('GET endpoint working');",
-              "});"
+              "});",
+              "",
+              "console.log(\"✅ Test GET endpoint successful\");"
             ],
             "type": "text/javascript"
           }
@@ -117,7 +121,9 @@
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('received_data');",
               "    pm.expect(jsonData.received_data.test).to.eql('data');",
-              "});"
+              "});",
+              "",
+              "console.log(\"✅ Test POST endpoint successful\");"
             ],
             "type": "text/javascript"
           }
@@ -157,13 +163,16 @@
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('id');",
               "    pm.collectionVariables.set('agent_id', jsonData.id);",
+              "    console.log(\"Agent ID: \" + jsonData.id);",
               "});",
               "",
               "pm.test(\"Response has status\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('status');",
               "    pm.expect(jsonData.status).to.eql('active');",
-              "});"
+              "});",
+              "",
+              "console.log(\"✅ Agent session created successfully\");"
             ],
             "type": "text/javascript"
           }
@@ -209,8 +218,13 @@
               "    if (jsonData.agent) {",
               "        pm.expect(jsonData.agent).to.have.property('id');",
               "        pm.expect(jsonData.agent).to.have.property('status');",
+              "        console.log(\"Active agent found: \" + jsonData.agent.id);",
+              "    } else {",
+              "        console.log(\"No active agent found\");",
               "    }",
-              "});"
+              "});",
+              "",
+              "console.log(\"✅ Get active agent successful\");"
             ],
             "type": "text/javascript"
           }
@@ -232,7 +246,7 @@
       }
     },
     {
-      "name": "6. Create Test Document (Requires Auth)",
+      "name": "6. Embed Medical Document (Requires Auth)",
       "event": [
         {
           "listen": "test",
@@ -246,13 +260,16 @@
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('job_id');",
               "    pm.collectionVariables.set('job_id', jsonData.job_id);",
+              "    console.log(\"Job ID: \" + jsonData.job_id);",
               "});",
               "",
               "pm.test(\"Response has status\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('status');",
               "    pm.expect(jsonData.status).to.be.oneOf(['pending', 'processing', 'completed']);",
-              "});"
+              "});",
+              "",
+              "console.log(\"✅ Document embedding job created successfully\");"
             ],
             "type": "text/javascript"
           }
@@ -272,7 +289,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"file_path\": \"test-documents/sample-medical-paper.pdf\",\n  \"metadata\": {\n    \"title\": \"Sample Medical Research Paper\",\n    \"author\": \"Dr. Test Author\",\n    \"category\": \"cardiology\",\n    \"year\": \"2024\",\n    \"source\": \"postman_test\",\n    \"content\": \"This is a test document about cardiovascular health. Hypertension is a common condition that affects millions of people worldwide. Treatment options include lifestyle modifications such as diet and exercise, as well as medications like ACE inhibitors, beta blockers, and diuretics. Regular monitoring of blood pressure is essential for effective management.\"\n  }\n}"
+          "raw": "{\n  \"file_path\": \"test-documents/rare-medical-condition.pdf\",\n  \"metadata\": {\n    \"title\": \"Rare Medical Conditions: Morgellons Disease\",\n    \"author\": \"Dr. Sarah Johnson\",\n    \"category\": \"dermatology\",\n    \"year\": \"2024\",\n    \"source\": \"Journal of Investigative Dermatology\",\n    \"content\": \"Morgellons disease is a rare and controversial condition characterized by the presence of fibers or other solid materials emerging from skin lesions, accompanied by symptoms such as crawling sensations on and under the skin. First described in 2002, patients report colorful, thread-like fibers and other materials protruding from their skin, along with sensations of crawling, biting, and stinging. While the CDC conducted a study in 2012 concluding that Morgellons was psychosomatic in nature (a form of delusional parasitosis), recent research has identified potential connections to Borrelia spirochetes, suggesting a possible link to Lyme disease. Some researchers have found unusual fibers containing cellulose, which is not naturally produced by the human body, as well as other unusual materials with unique spectral characteristics. Treatment approaches vary widely, from antipsychotic medications to long-term antibiotic regimens, with limited consensus on effective protocols. The condition remains poorly understood, with patients often experiencing significant psychological distress due to both symptoms and medical dismissal.\"\n  }\n}"
         },
         "url": {
           "raw": "{{base_url}}/embed",
@@ -297,7 +314,20 @@
               "        var jsonData = pm.response.json();",
               "        pm.expect(jsonData).to.have.property('status');",
               "        pm.expect(jsonData).to.have.property('job_id');",
+              "        console.log(\"Job status: \" + jsonData.status);",
+              "        ",
+              "        if (jsonData.status === 'completed') {",
+              "            console.log(\"✅ Document embedding completed successfully\");",
+              "            console.log(\"Chunks created: \" + jsonData.chunk_count);",
+              "            console.log(\"Document IDs: \" + jsonData.document_ids.join(', '));",
+              "        } else if (jsonData.status === 'processing') {",
+              "            console.log(\"⏳ Document embedding is still processing\");",
+              "        } else if (jsonData.status === 'failed') {",
+              "            console.log(\"❌ Document embedding failed: \" + jsonData.error);",
+              "        }",
               "    });",
+              "} else {",
+              "    console.log(\"❌ Job not found\");",
               "}"
             ],
             "type": "text/javascript"
@@ -320,7 +350,7 @@
       }
     },
     {
-      "name": "8. Chat Query (Requires Auth)",
+      "name": "8. Chat Query About Morgellons (Requires Auth)",
       "event": [
         {
           "listen": "test",
@@ -334,13 +364,23 @@
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('response');",
               "    pm.expect(jsonData).to.have.property('status');",
+              "    console.log(\"Response: \" + jsonData.response.substring(0, 100) + \"...\");",
               "});",
               "",
               "pm.test(\"Response has sources array\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('sources');",
               "    pm.expect(jsonData.sources).to.be.an('array');",
-              "});"
+              "    ",
+              "    if (jsonData.sources.length > 0) {",
+              "        console.log(\"Sources found: \" + jsonData.sources.length);",
+              "        console.log(\"First source similarity: \" + jsonData.sources[0].similarity);",
+              "    } else {",
+              "        console.log(\"No sources found\");",
+              "    }",
+              "});",
+              "",
+              "console.log(\"✅ Chat query successful\");"
             ],
             "type": "text/javascript"
           }
@@ -360,7 +400,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"query\": \"What are the treatment options for hypertension?\",\n  \"history\": [],\n  \"top_k\": 5,\n  \"temperature\": 0.7,\n  \"stream\": false\n}"
+          "raw": "{\n  \"query\": \"What is Morgellons disease and what are its symptoms?\",\n  \"history\": [],\n  \"top_k\": 5,\n  \"temperature\": 0.7,\n  \"stream\": false\n}"
         },
         "url": {
           "raw": "{{base_url}}/chat",
@@ -370,7 +410,127 @@
       }
     },
     {
-      "name": "9. Chat Query - No Results Test",
+      "name": "9. Chat Query About Treatment (Requires Auth)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has answer\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('response');",
+              "    pm.expect(jsonData).to.have.property('status');",
+              "    console.log(\"Response: \" + jsonData.response.substring(0, 100) + \"...\");",
+              "});",
+              "",
+              "pm.test(\"Response has sources array\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('sources');",
+              "    pm.expect(jsonData.sources).to.be.an('array');",
+              "    ",
+              "    if (jsonData.sources.length > 0) {",
+              "        console.log(\"Sources found: \" + jsonData.sources.length);",
+              "        console.log(\"First source similarity: \" + jsonData.sources[0].similarity);",
+              "    } else {",
+              "        console.log(\"No sources found\");",
+              "    }",
+              "});",
+              "",
+              "console.log(\"✅ Chat query about treatment successful\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"What treatments are available for Morgellons disease?\",\n  \"history\": [],\n  \"top_k\": 5,\n  \"temperature\": 0.7,\n  \"stream\": false\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        }
+      }
+    },
+    {
+      "name": "10. Chat Query About Research (Requires Auth)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has answer\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('response');",
+              "    pm.expect(jsonData).to.have.property('status');",
+              "    console.log(\"Response: \" + jsonData.response.substring(0, 100) + \"...\");",
+              "});",
+              "",
+              "pm.test(\"Response has sources array\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('sources');",
+              "    pm.expect(jsonData.sources).to.be.an('array');",
+              "    ",
+              "    if (jsonData.sources.length > 0) {",
+              "        console.log(\"Sources found: \" + jsonData.sources.length);",
+              "        console.log(\"First source similarity: \" + jsonData.sources[0].similarity);",
+              "    } else {",
+              "        console.log(\"No sources found\");",
+              "    }",
+              "});",
+              "",
+              "console.log(\"✅ Chat query about research successful\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"What does recent research suggest about the connection between Morgellons and Lyme disease?\",\n  \"history\": [],\n  \"top_k\": 5,\n  \"temperature\": 0.7,\n  \"stream\": false\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        }
+      }
+    },
+    {
+      "name": "11. Chat Query - No Results Test",
       "event": [
         {
           "listen": "test",
@@ -384,7 +544,17 @@
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('response');",
               "    pm.expect(jsonData).to.have.property('status');",
-              "});"
+              "    ",
+              "    if (jsonData.status === 'no_results') {",
+              "        console.log(\"✅ System correctly indicated no results available\");",
+              "    } else {",
+              "        console.log(\"System attempted to answer with available context\");",
+              "    }",
+              "    ",
+              "    console.log(\"Response: \" + jsonData.response.substring(0, 100) + \"...\");",
+              "});",
+              "",
+              "console.log(\"✅ No results test completed\");"
             ],
             "type": "text/javascript"
           }
@@ -414,7 +584,7 @@
       }
     },
     {
-      "name": "10. Terminate Agent Session (Requires Auth)",
+      "name": "12. Terminate Agent Session (Requires Auth)",
       "event": [
         {
           "listen": "test",
@@ -428,7 +598,10 @@
               "    pm.test(\"Response has success message\", function () {",
               "        var jsonData = pm.response.json();",
               "        pm.expect(jsonData).to.have.property('message');",
+              "        console.log(\"✅ Agent session terminated successfully\");",
               "    });",
+              "} else {",
+              "    console.log(\"❌ Agent session not found or already terminated\");",
               "}"
             ],
             "type": "text/javascript"
@@ -451,7 +624,7 @@
       }
     },
     {
-      "name": "11. Test Authentication Failure",
+      "name": "13. Test Authentication Failure",
       "event": [
         {
           "listen": "test",
@@ -464,7 +637,10 @@
               "pm.test(\"Response has error message\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('detail');",
-              "});"
+              "    console.log(\"Error message: \" + jsonData.detail);",
+              "});",
+              "",
+              "console.log(\"✅ Authentication failure test successful\");"
             ],
             "type": "text/javascript"
           }
