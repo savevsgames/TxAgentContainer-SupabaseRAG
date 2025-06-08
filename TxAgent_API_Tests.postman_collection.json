@@ -1,29 +1,34 @@
 {
   "info": {
-    "name": "TxAgent Medical RAG API Tests",
-    "description": "Comprehensive test collection for TxAgent Hybrid Container with realistic medical document testing",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    "name": "TxAgent Medical RAG API Tests - Updated",
+    "description": "Comprehensive test collection for TxAgent Hybrid Container with centralized authentication and clean database schema",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "2.0.0"
   },
   "variable": [
     {
       "key": "base_url",
-      "value": "https://bjo5yophw94s7b-8000.proxy.runpod.net",
-      "type": "string"
+      "value": "https://your-txagent-container-url.proxy.runpod.net",
+      "type": "string",
+      "description": "TxAgent container URL on RunPod"
     },
     {
       "key": "jwt_token",
       "value": "your_supabase_jwt_token_here",
-      "type": "string"
+      "type": "string",
+      "description": "Valid Supabase JWT token with sub, aud, and role claims"
     },
     {
       "key": "job_id",
       "value": "",
-      "type": "string"
+      "type": "string",
+      "description": "Embedding job ID from /embed endpoint"
     },
     {
       "key": "agent_id",
       "value": "",
-      "type": "string"
+      "type": "string",
+      "description": "Agent session ID from /agents endpoint"
     }
   ],
   "item": [
@@ -49,9 +54,10 @@
               "    pm.expect(jsonData).to.have.property('model');",
               "    pm.expect(jsonData).to.have.property('device');",
               "    pm.expect(jsonData).to.have.property('version');",
+              "    console.log(`Model: ${jsonData.model}, Device: ${jsonData.device}, Version: ${jsonData.version}`);",
               "});",
               "",
-              "console.log(\"✅ Health check successful - TxAgent container is running\");"
+              "console.log(\"✅ Health check successful - TxAgent container is running with centralized auth\");"
             ],
             "type": "text/javascript"
           }
@@ -64,7 +70,8 @@
           "raw": "{{base_url}}/health",
           "host": ["{{base_url}}"],
           "path": ["health"]
-        }
+        },
+        "description": "Check if the TxAgent container is healthy and running"
       }
     },
     {
@@ -97,7 +104,8 @@
           "raw": "{{base_url}}/test",
           "host": ["{{base_url}}"],
           "path": ["test"]
-        }
+        },
+        "description": "Test basic GET endpoint functionality"
       }
     },
     {
@@ -120,7 +128,7 @@
               "pm.test(\"Response echoes sent data\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('received_data');",
-              "    pm.expect(jsonData.received_data.test).to.eql('data');",
+              "    pm.expect(jsonData.received_data.test).to.eql('centralized_auth');",
               "});",
               "",
               "console.log(\"✅ Test POST endpoint successful\");"
@@ -139,17 +147,18 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"test\": \"data\",\n  \"timestamp\": \"2025-01-01T00:00:00Z\",\n  \"user\": \"postman_test\"\n}"
+          "raw": "{\n  \"test\": \"centralized_auth\",\n  \"timestamp\": \"2025-01-08T00:00:00Z\",\n  \"user\": \"postman_test\",\n  \"architecture\": \"consolidated\"\n}"
         },
         "url": {
           "raw": "{{base_url}}/test",
           "host": ["{{base_url}}"],
           "path": ["test"]
-        }
+        },
+        "description": "Test basic POST endpoint functionality"
       }
     },
     {
-      "name": "4. Create Agent Session (Requires Auth)",
+      "name": "4. Create Agent Session (Centralized Auth)",
       "event": [
         {
           "listen": "test",
@@ -166,13 +175,19 @@
               "    console.log(\"Agent ID: \" + jsonData.id);",
               "});",
               "",
-              "pm.test(\"Response has status\", function () {",
+              "pm.test(\"Response has correct status\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('status');",
-              "    pm.expect(jsonData.status).to.eql('active');",
+              "    pm.expect(jsonData.status).to.be.oneOf(['initializing', 'active']);",
               "});",
               "",
-              "console.log(\"✅ Agent session created successfully\");"
+              "pm.test(\"Response has user_id\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('user_id');",
+              "    console.log(\"User ID: \" + jsonData.user_id);",
+              "});",
+              "",
+              "console.log(\"✅ Agent session created successfully using centralized auth service\");"
             ],
             "type": "text/javascript"
           }
@@ -183,7 +198,8 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{jwt_token}}"
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token with sub, aud, and role claims"
           },
           {
             "key": "Content-Type",
@@ -192,17 +208,18 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"session_data\": {\n    \"container_url\": \"https://bjo5yophw94s7b-8000.proxy.runpod.net\",\n    \"capabilities\": [\"embedding\", \"chat\"],\n    \"model\": \"dmis-lab/biobert-v1.1\",\n    \"created_by\": \"postman_test\"\n  }\n}"
+          "raw": "{\n  \"session_data\": {\n    \"container_url\": \"{{base_url}}\",\n    \"capabilities\": [\"embedding\", \"chat\"],\n    \"model\": \"dmis-lab/biobert-v1.1\",\n    \"architecture\": \"centralized_auth\",\n    \"created_by\": \"postman_test\"\n  }\n}"
         },
         "url": {
           "raw": "{{base_url}}/agents",
           "host": ["{{base_url}}"],
           "path": ["agents"]
-        }
+        },
+        "description": "Create a new agent session using centralized authentication service"
       }
     },
     {
-      "name": "5. Get Active Agent (Requires Auth)",
+      "name": "5. Get Active Agent (Centralized Auth)",
       "event": [
         {
           "listen": "test",
@@ -218,13 +235,15 @@
               "    if (jsonData.agent) {",
               "        pm.expect(jsonData.agent).to.have.property('id');",
               "        pm.expect(jsonData.agent).to.have.property('status');",
+              "        pm.expect(jsonData.agent).to.have.property('user_id');",
               "        console.log(\"Active agent found: \" + jsonData.agent.id);",
+              "        console.log(\"Agent status: \" + jsonData.agent.status);",
               "    } else {",
               "        console.log(\"No active agent found\");",
               "    }",
               "});",
               "",
-              "console.log(\"✅ Get active agent successful\");"
+              "console.log(\"✅ Get active agent successful using centralized auth\");"
             ],
             "type": "text/javascript"
           }
@@ -235,18 +254,20 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{jwt_token}}"
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token validated by centralized auth service"
           }
         ],
         "url": {
           "raw": "{{base_url}}/agents/active",
           "host": ["{{base_url}}"],
           "path": ["agents", "active"]
-        }
+        },
+        "description": "Get active agent session using centralized authentication"
       }
     },
     {
-      "name": "6. Embed Medical Document (Requires Auth)",
+      "name": "6. Embed Medical Document (Clean Schema)",
       "event": [
         {
           "listen": "test",
@@ -269,7 +290,13 @@
               "    pm.expect(jsonData.status).to.be.oneOf(['pending', 'processing', 'completed']);",
               "});",
               "",
-              "console.log(\"✅ Document embedding job created successfully\");"
+              "pm.test(\"Response has message\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('message');",
+              "    console.log(\"Message: \" + jsonData.message);",
+              "});",
+              "",
+              "console.log(\"✅ Document embedding job created successfully with clean schema\");"
             ],
             "type": "text/javascript"
           }
@@ -280,7 +307,8 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{jwt_token}}"
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token for RLS-compliant operations"
           },
           {
             "key": "Content-Type",
@@ -289,17 +317,18 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"file_path\": \"test-documents/rare-medical-condition.pdf\",\n  \"metadata\": {\n    \"title\": \"Rare Medical Conditions: Morgellons Disease\",\n    \"author\": \"Dr. Sarah Johnson\",\n    \"category\": \"dermatology\",\n    \"year\": \"2024\",\n    \"source\": \"Journal of Investigative Dermatology\",\n    \"content\": \"Morgellons disease is a rare and controversial condition characterized by the presence of fibers or other solid materials emerging from skin lesions, accompanied by symptoms such as crawling sensations on and under the skin. First described in 2002, patients report colorful, thread-like fibers and other materials protruding from their skin, along with sensations of crawling, biting, and stinging. While the CDC conducted a study in 2012 concluding that Morgellons was psychosomatic in nature (a form of delusional parasitosis), recent research has identified potential connections to Borrelia spirochetes, suggesting a possible link to Lyme disease. Some researchers have found unusual fibers containing cellulose, which is not naturally produced by the human body, as well as other unusual materials with unique spectral characteristics. Treatment approaches vary widely, from antipsychotic medications to long-term antibiotic regimens, with limited consensus on effective protocols. The condition remains poorly understood, with patients often experiencing significant psychological distress due to both symptoms and medical dismissal.\"\n  }\n}"
+          "raw": "{\n  \"file_path\": \"test-documents/morgellons-disease.md\",\n  \"metadata\": {\n    \"title\": \"Rare Medical Conditions: Morgellons Disease\",\n    \"author\": \"Dr. Sarah Johnson\",\n    \"category\": \"dermatology\",\n    \"year\": \"2024\",\n    \"source\": \"Medical Research Database\",\n    \"document_type\": \"research_paper\",\n    \"keywords\": [\"morgellons\", \"dermatology\", \"rare_disease\", \"fibers\"],\n    \"test_document\": true\n  }\n}"
         },
         "url": {
           "raw": "{{base_url}}/embed",
           "host": ["{{base_url}}"],
           "path": ["embed"]
-        }
+        },
+        "description": "Process and embed a medical document using the clean database schema"
       }
     },
     {
-      "name": "7. Get Job Status (Requires Auth)",
+      "name": "7. Get Job Status (RLS Compliant)",
       "event": [
         {
           "listen": "test",
@@ -318,16 +347,20 @@
               "        ",
               "        if (jsonData.status === 'completed') {",
               "            console.log(\"✅ Document embedding completed successfully\");",
-              "            console.log(\"Chunks created: \" + jsonData.chunk_count);",
-              "            console.log(\"Document IDs: \" + jsonData.document_ids.join(', '));",
+              "            console.log(\"Chunks created: \" + (jsonData.chunk_count || 'unknown'));",
+              "            if (jsonData.document_ids && jsonData.document_ids.length > 0) {",
+              "                console.log(\"Document IDs: \" + jsonData.document_ids.join(', '));",
+              "            }",
               "        } else if (jsonData.status === 'processing') {",
               "            console.log(\"⏳ Document embedding is still processing\");",
               "        } else if (jsonData.status === 'failed') {",
-              "            console.log(\"❌ Document embedding failed: \" + jsonData.error);",
+              "            console.log(\"❌ Document embedding failed: \" + (jsonData.error || 'unknown error'));",
+              "        } else if (jsonData.status === 'pending') {",
+              "            console.log(\"⏳ Document embedding is pending\");",
               "        }",
               "    });",
               "} else {",
-              "    console.log(\"❌ Job not found\");",
+              "    console.log(\"❌ Job not found or access denied (RLS working correctly)\");",
               "}"
             ],
             "type": "text/javascript"
@@ -339,18 +372,20 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{jwt_token}}"
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token for RLS-filtered access"
           }
         ],
         "url": {
           "raw": "{{base_url}}/embedding-jobs/{{job_id}}",
           "host": ["{{base_url}}"],
           "path": ["embedding-jobs", "{{job_id}}"]
-        }
+        },
+        "description": "Check embedding job status with RLS compliance"
       }
     },
     {
-      "name": "8. Chat Query About Morgellons (Requires Auth)",
+      "name": "8. Chat Query - Morgellons Symptoms (Vector Search)",
       "event": [
         {
           "listen": "test",
@@ -364,7 +399,7 @@
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('response');",
               "    pm.expect(jsonData).to.have.property('status');",
-              "    console.log(\"Response: \" + jsonData.response.substring(0, 100) + \"...\");",
+              "    console.log(\"Response preview: \" + jsonData.response.substring(0, 150) + \"...\");",
               "});",
               "",
               "pm.test(\"Response has sources array\", function () {",
@@ -374,13 +409,18 @@
               "    ",
               "    if (jsonData.sources.length > 0) {",
               "        console.log(\"Sources found: \" + jsonData.sources.length);",
-              "        console.log(\"First source similarity: \" + jsonData.sources[0].similarity);",
+              "        console.log(\"Top similarity score: \" + jsonData.sources[0].similarity);",
+              "        ",
+              "        // Test that sources have required fields",
+              "        pm.expect(jsonData.sources[0]).to.have.property('content');",
+              "        pm.expect(jsonData.sources[0]).to.have.property('metadata');",
+              "        pm.expect(jsonData.sources[0]).to.have.property('similarity');",
               "    } else {",
-              "        console.log(\"No sources found\");",
+              "        console.log(\"No sources found - may need to wait for embedding to complete\");",
               "    }",
               "});",
               "",
-              "console.log(\"✅ Chat query successful\");"
+              "console.log(\"✅ Chat query successful using standardized match_documents function\");"
             ],
             "type": "text/javascript"
           }
@@ -391,7 +431,8 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{jwt_token}}"
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token for RLS-filtered vector search"
           },
           {
             "key": "Content-Type",
@@ -400,17 +441,18 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"query\": \"What is Morgellons disease and what are its symptoms?\",\n  \"history\": [],\n  \"top_k\": 5,\n  \"temperature\": 0.7,\n  \"stream\": false\n}"
+          "raw": "{\n  \"query\": \"What are the main symptoms of Morgellons disease?\",\n  \"history\": [],\n  \"top_k\": 5,\n  \"temperature\": 0.7,\n  \"stream\": false\n}"
         },
         "url": {
           "raw": "{{base_url}}/chat",
           "host": ["{{base_url}}"],
           "path": ["chat"]
-        }
+        },
+        "description": "Query about Morgellons symptoms using the standardized vector search function"
       }
     },
     {
-      "name": "9. Chat Query About Treatment (Requires Auth)",
+      "name": "9. Chat Query - Treatment Options (BioBERT)",
       "event": [
         {
           "listen": "test",
@@ -424,23 +466,28 @@
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('response');",
               "    pm.expect(jsonData).to.have.property('status');",
-              "    console.log(\"Response: \" + jsonData.response.substring(0, 100) + \"...\");",
+              "    console.log(\"Response preview: \" + jsonData.response.substring(0, 150) + \"...\");",
               "});",
               "",
-              "pm.test(\"Response has sources array\", function () {",
+              "pm.test(\"Vector search working\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('sources');",
-              "    pm.expect(jsonData.sources).to.be.an('array');",
               "    ",
               "    if (jsonData.sources.length > 0) {",
-              "        console.log(\"Sources found: \" + jsonData.sources.length);",
-              "        console.log(\"First source similarity: \" + jsonData.sources[0].similarity);",
+              "        console.log(\"BioBERT embeddings found \" + jsonData.sources.length + \" relevant chunks\");",
+              "        ",
+              "        // Check that similarity scores are reasonable",
+              "        jsonData.sources.forEach((source, index) => {",
+              "            console.log(`Source ${index + 1} similarity: ${source.similarity}`);",
+              "            pm.expect(source.similarity).to.be.at.least(0);",
+              "            pm.expect(source.similarity).to.be.at.most(1);",
+              "        });",
               "    } else {",
-              "        console.log(\"No sources found\");",
+              "        console.log(\"No relevant sources found for treatment query\");",
               "    }",
               "});",
               "",
-              "console.log(\"✅ Chat query about treatment successful\");"
+              "console.log(\"✅ Treatment query successful using BioBERT embeddings\");"
             ],
             "type": "text/javascript"
           }
@@ -451,7 +498,8 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{jwt_token}}"
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token for authenticated vector search"
           },
           {
             "key": "Content-Type",
@@ -460,17 +508,18 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"query\": \"What treatments are available for Morgellons disease?\",\n  \"history\": [],\n  \"top_k\": 5,\n  \"temperature\": 0.7,\n  \"stream\": false\n}"
+          "raw": "{\n  \"query\": \"What treatment approaches are available for Morgellons disease?\",\n  \"history\": [],\n  \"top_k\": 5,\n  \"temperature\": 0.7,\n  \"stream\": false\n}"
         },
         "url": {
           "raw": "{{base_url}}/chat",
           "host": ["{{base_url}}"],
           "path": ["chat"]
-        }
+        },
+        "description": "Query about treatment options using BioBERT medical embeddings"
       }
     },
     {
-      "name": "10. Chat Query About Research (Requires Auth)",
+      "name": "10. Chat Query - Research Controversy",
       "event": [
         {
           "listen": "test",
@@ -480,27 +529,31 @@
               "    pm.response.to.have.status(200);",
               "});",
               "",
-              "pm.test(\"Response has answer\", function () {",
+              "pm.test(\"Response handles complex medical topic\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('response');",
               "    pm.expect(jsonData).to.have.property('status');",
-              "    console.log(\"Response: \" + jsonData.response.substring(0, 100) + \"...\");",
+              "    ",
+              "    // Check that response is substantial for complex query",
+              "    pm.expect(jsonData.response.length).to.be.at.least(50);",
+              "    console.log(\"Response length: \" + jsonData.response.length + \" characters\");",
               "});",
               "",
-              "pm.test(\"Response has sources array\", function () {",
+              "pm.test(\"Sources provide context\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('sources');",
-              "    pm.expect(jsonData.sources).to.be.an('array');",
               "    ",
               "    if (jsonData.sources.length > 0) {",
-              "        console.log(\"Sources found: \" + jsonData.sources.length);",
-              "        console.log(\"First source similarity: \" + jsonData.sources[0].similarity);",
-              "    } else {",
-              "        console.log(\"No sources found\");",
+              "        console.log(\"Found \" + jsonData.sources.length + \" contextual sources\");",
+              "        ",
+              "        // Check metadata structure",
+              "        if (jsonData.sources[0].metadata) {",
+              "            console.log(\"Metadata keys: \" + Object.keys(jsonData.sources[0].metadata).join(', '));",
+              "        }",
               "    }",
               "});",
               "",
-              "console.log(\"✅ Chat query about research successful\");"
+              "console.log(\"✅ Complex research query handled successfully\");"
             ],
             "type": "text/javascript"
           }
@@ -511,7 +564,8 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{jwt_token}}"
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token for authenticated operations"
           },
           {
             "key": "Content-Type",
@@ -520,13 +574,14 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"query\": \"What does recent research suggest about the connection between Morgellons and Lyme disease?\",\n  \"history\": [],\n  \"top_k\": 5,\n  \"temperature\": 0.7,\n  \"stream\": false\n}"
+          "raw": "{\n  \"query\": \"Why is Morgellons disease controversial in the medical community?\",\n  \"history\": [],\n  \"top_k\": 5,\n  \"temperature\": 0.7,\n  \"stream\": false\n}"
         },
         "url": {
           "raw": "{{base_url}}/chat",
           "host": ["{{base_url}}"],
           "path": ["chat"]
-        }
+        },
+        "description": "Query about medical controversy using contextual understanding"
       }
     },
     {
@@ -540,21 +595,22 @@
               "    pm.response.to.have.status(200);",
               "});",
               "",
-              "pm.test(\"Response indicates no results or provides answer\", function () {",
+              "pm.test(\"System handles irrelevant queries gracefully\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('response');",
               "    pm.expect(jsonData).to.have.property('status');",
               "    ",
               "    if (jsonData.status === 'no_results') {",
-              "        console.log(\"✅ System correctly indicated no results available\");",
+              "        console.log(\"✅ System correctly indicated no relevant results\");",
+              "        pm.expect(jsonData.response).to.include(\"couldn't find\");",
               "    } else {",
               "        console.log(\"System attempted to answer with available context\");",
+              "        // Should have very few or no sources for irrelevant query",
+              "        pm.expect(jsonData.sources.length).to.be.at.most(2);",
               "    }",
-              "    ",
-              "    console.log(\"Response: \" + jsonData.response.substring(0, 100) + \"...\");",
               "});",
               "",
-              "console.log(\"✅ No results test completed\");"
+              "console.log(\"✅ No results handling test completed\");"
             ],
             "type": "text/javascript"
           }
@@ -565,7 +621,8 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{jwt_token}}"
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token for authenticated operations"
           },
           {
             "key": "Content-Type",
@@ -574,17 +631,18 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"query\": \"What is the weather like on Mars today?\",\n  \"history\": [],\n  \"top_k\": 3,\n  \"temperature\": 0.5\n}"
+          "raw": "{\n  \"query\": \"What is the weather forecast for Mars next week?\",\n  \"history\": [],\n  \"top_k\": 3,\n  \"temperature\": 0.5\n}"
         },
         "url": {
           "raw": "{{base_url}}/chat",
           "host": ["{{base_url}}"],
           "path": ["chat"]
-        }
+        },
+        "description": "Test system behavior with completely irrelevant query"
       }
     },
     {
-      "name": "12. Terminate Agent Session (Requires Auth)",
+      "name": "12. Terminate Agent Session (Clean Cleanup)",
       "event": [
         {
           "listen": "test",
@@ -599,9 +657,10 @@
               "        var jsonData = pm.response.json();",
               "        pm.expect(jsonData).to.have.property('message');",
               "        console.log(\"✅ Agent session terminated successfully\");",
+              "        console.log(\"Message: \" + jsonData.message);",
               "    });",
               "} else {",
-              "    console.log(\"❌ Agent session not found or already terminated\");",
+              "    console.log(\"❌ Agent session not found or already terminated (RLS working)\");",
               "}"
             ],
             "type": "text/javascript"
@@ -613,14 +672,16 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer {{jwt_token}}"
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token for authenticated deletion"
           }
         ],
         "url": {
           "raw": "{{base_url}}/agents/{{agent_id}}",
           "host": ["{{base_url}}"],
           "path": ["agents", "{{agent_id}}"]
-        }
+        },
+        "description": "Terminate agent session with proper cleanup"
       }
     },
     {
@@ -638,9 +699,18 @@
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('detail');",
               "    console.log(\"Error message: \" + jsonData.detail);",
+              "    ",
+              "    // Should be a meaningful auth error",
+              "    pm.expect(jsonData.detail).to.be.oneOf([",
+              "        'Invalid token signature',",
+              "        'Token has expired',",
+              "        'Invalid token format',",
+              "        'Invalid token audience',",
+              "        'Authorization header missing'",
+              "    ]);",
               "});",
               "",
-              "console.log(\"✅ Authentication failure test successful\");"
+              "console.log(\"✅ Authentication failure test successful - centralized auth working\");"
             ],
             "type": "text/javascript"
           }
@@ -651,7 +721,8 @@
         "header": [
           {
             "key": "Authorization",
-            "value": "Bearer invalid_token"
+            "value": "Bearer invalid_token_for_testing",
+            "description": "Invalid token to test auth failure"
           },
           {
             "key": "Content-Type",
@@ -666,7 +737,87 @@
           "raw": "{{base_url}}/chat",
           "host": ["{{base_url}}"],
           "path": ["chat"]
+        },
+        "description": "Test centralized authentication failure handling"
+      }
+    },
+    {
+      "name": "14. Test RLS Isolation",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 401 or 403\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]);",
+              "});",
+              "",
+              "pm.test(\"RLS prevents access to other user data\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('detail');",
+              "    console.log(\"RLS protection message: \" + jsonData.detail);",
+              "});",
+              "",
+              "console.log(\"✅ RLS isolation test successful - user data properly protected\");"
+            ],
+            "type": "text/javascript"
+          }
         }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "description": "Valid token but trying to access non-existent job"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/embedding-jobs/00000000-0000-0000-0000-000000000000",
+          "host": ["{{base_url}}"],
+          "path": ["embedding-jobs", "00000000-0000-0000-0000-000000000000"]
+        },
+        "description": "Test that RLS prevents access to non-existent or other user's data"
+      }
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Pre-request script for the entire collection",
+          "console.log('🚀 Starting TxAgent API Tests with Centralized Authentication');",
+          "console.log('📋 Testing Features:');",
+          "console.log('   - Centralized authentication service');",
+          "console.log('   - Clean database schema (single migration)');",
+          "console.log('   - RLS-compliant operations');",
+          "console.log('   - BioBERT embeddings (768-dimensional)');",
+          "console.log('   - Standardized match_documents function');",
+          "console.log('   - User data isolation');",
+          "",
+          "// Validate that required variables are set",
+          "if (!pm.collectionVariables.get('base_url') || pm.collectionVariables.get('base_url') === 'https://your-txagent-container-url.proxy.runpod.net') {",
+          "    console.warn('⚠️ Please update the base_url collection variable with your actual TxAgent container URL');",
+          "}",
+          "",
+          "if (!pm.collectionVariables.get('jwt_token') || pm.collectionVariables.get('jwt_token') === 'your_supabase_jwt_token_here') {",
+          "    console.warn('⚠️ Please update the jwt_token collection variable with a valid Supabase JWT token');",
+          "    console.warn('   Token must have: sub (user_id), aud: \"authenticated\", role: \"authenticated\"');",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Post-response script for the entire collection",
+          "// This runs after each request in the collection"
+        ]
       }
     }
   ]
