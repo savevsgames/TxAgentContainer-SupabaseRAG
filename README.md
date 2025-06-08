@@ -41,7 +41,10 @@ The TxAgent Medical RAG System uses a hybrid architecture that separates compute
 
 ### Database Setup
 
-See `SUPABASE_MIGRATIONS.md` for complete database setup instructions and migration consolidation.
+✅ **COMPLETED**: The database schema has been consolidated into a single migration file:
+- Run `supabase/migrations/20250108120000_consolidated_schema.sql`
+- This creates all required tables, indexes, RLS policies, and functions
+- No additional migrations needed
 
 ### Deployment
 
@@ -135,7 +138,7 @@ CREATE TABLE agents (
 1. User submits question via frontend
 2. JWT token validated by TxAgent
 3. Query converted to BioBERT embedding
-4. Vector similarity search in user's documents using `match_documents()` function
+4. Vector similarity search using `match_documents()` function
 5. OpenAI GPT generates contextual response
 6. Answer with sources returned to user
 
@@ -223,14 +226,6 @@ The TxAgent container uses a simplified authentication approach:
 - `exp`: Token expiration timestamp
 - `iat`: Token issued at timestamp
 
-### Current Authentication Issues (RESOLVED)
-
-The logs show that embed requests are failing with RLS policy violations. This indicates that the JWT authentication is not properly establishing the user context for RLS policies. The issue has been addressed by:
-
-1. **Simplified Supabase Client Authentication**: Removed complex fallback mechanisms
-2. **Direct Header Setting**: JWT tokens are set directly on the auth headers
-3. **Removed Auth Tests**: Eliminated problematic `auth.uid()` test calls that were failing
-
 ## Testing
 
 ### Postman Collection
@@ -265,29 +260,22 @@ For testing authenticated endpoints:
    - Verify endpoint exists and HTTP method is correct
    - Check CORS configuration
 
-2. **401 Unauthorized / RLS Policy Violations**
+2. **401 Unauthorized**
    - Verify JWT token is valid and not expired
    - Check Authorization header format: `Bearer <token>`
    - Ensure user exists in Supabase
-   - Verify RLS policies are correctly configured
 
 3. **500 Internal Server Error**
    - Check container logs for detailed error information
    - Verify environment variables are set correctly
    - Check Supabase connection and database schema
 
-### Current Known Issues
+### Database Migration Status
 
-Based on the logs, the main issue is **RLS policy violations** when creating embedding jobs. This suggests:
-
-1. JWT tokens are not properly establishing user context
-2. The `auth.uid()` function may not be working as expected
-3. RLS policies may need adjustment
-
-**Recommended fixes** (see `SUPABASE_MIGRATIONS.md`):
-1. Consolidate all migrations into a single, clean migration
-2. Ensure proper RLS policy configuration
-3. Verify JWT authentication flow
+✅ **RESOLVED**: Migration consolidation completed successfully
+- All duplicate migration files have been removed
+- Single consolidated migration provides clean schema
+- No more duplicate functions or RLS policy conflicts
 
 ### Debug Commands
 
@@ -340,7 +328,7 @@ The project follows a modular architecture:
 │   ├── llm.py             # OpenAI integration
 │   └── utils.py           # Utilities and logging
 ├── supabase/
-│   └── migrations/        # Database schema (see SUPABASE_MIGRATIONS.md)
+│   └── migrations/        # Single consolidated migration
 └── docs/                  # Documentation
 ```
 
@@ -360,5 +348,5 @@ The project follows a modular architecture:
 
 For detailed technical information, see:
 - `BREAKDOWN.md` - Complete technical breakdown
-- `SUPABASE_MIGRATIONS.md` - Database migration consolidation and cleanup
+- `SUPABASE_MIGRATIONS.md` - Migration consolidation details (COMPLETED)
 - `SUPABASE_CONFIG.md` - Database configuration details
