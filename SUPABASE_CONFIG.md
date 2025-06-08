@@ -243,7 +243,7 @@ CREATE POLICY "Users can delete their own agents"
 
 ### 1. `match_documents` Function
 
-Performs vector similarity search on document embeddings with user isolation.
+⚠️ **CRITICAL ISSUE IDENTIFIED**: This function needs to be updated to work properly with RLS and authenticated users.
 
 ```sql
 CREATE OR REPLACE FUNCTION match_documents(
@@ -274,31 +274,37 @@ AS $$
 $$;
 ```
 
-**Parameters:**
-- `query_embedding`: 768-dimensional vector to search for
-- `match_threshold`: Minimum similarity threshold (0.0 to 1.0)
-- `match_count`: Maximum number of results to return
-- `query_user_id`: User ID for RLS filtering
+**⚠️ POTENTIAL ISSUE**: The function uses `SECURITY DEFINER` which bypasses RLS, but it manually filters by `query_user_id`. However, if the JWT authentication is not working properly, the `query_user_id` parameter might not be correctly passed or validated.
 
-**Returns:**
-- `id`: Document chunk ID
-- `content`: Document text content
-- `metadata`: Document metadata
-- `similarity`: Cosine similarity score (0.0 to 1.0)
-
-**Usage Example:**
+**Alternative Implementation with RLS**:
 ```sql
-SELECT * FROM match_documents(
-  '[0.1, 0.2, ...]'::vector(768),
-  0.5,
-  5,
-  '496a7180-5e75-42b0-8a61-b8cf92ffe286'::uuid
-);
+CREATE OR REPLACE FUNCTION match_documents(
+  query_embedding VECTOR(768),
+  match_threshold FLOAT,
+  match_count INT
+)
+RETURNS TABLE (
+  id UUID,
+  content TEXT,
+  metadata JSONB,
+  similarity FLOAT
+)
+LANGUAGE SQL STABLE
+SECURITY INVOKER
+AS $$
+  SELECT
+    documents.id,
+    documents.content,
+    documents.metadata,
+    1 - (documents.embedding <=> query_embedding) AS similarity
+  FROM documents
+  WHERE 1 - (documents.embedding <=> query_embedding) > match_threshold
+  ORDER BY similarity DESC
+  LIMIT match_count;
+$$;
 ```
 
 ### 2. `update_agent_last_active` Function
-
-Trigger function to automatically update the `last_active` timestamp on agent updates.
 
 ```sql
 CREATE OR REPLACE FUNCTION update_agent_last_active()
@@ -341,146 +347,209 @@ TO authenticated
 USING (bucket_id = 'documents' AND auth.uid()::text = (storage.foldername(name))[1]);
 ```
 
-## Authentication
+## Authentication Configuration
 
-The system uses Supabase Auth with JWT tokens. All API requests must include a valid JWT token in the Authorization header:
+### JWT Token Requirements
 
-```
-Authorization: Bearer <jwt_token>
-```
-
-### JWT Claims
-
-Required claims in JWT tokens:
-- `sub`: User ID (UUID)
-- `aud`: Must be "authenticated"
-- `role`: Must be "authenticated"
+**Critical JWT Claims for RLS to work**:
+- `sub`: User ID (UUID) - **MUST match user_id in database**
+- `aud`: Must be "authenticated" - **REQUIRED for RLS policies**
+- `role`: Must be "authenticated" - **REQUIRED for RLS policies**
 - `exp`: Token expiration timestamp
 - `iat`: Token issued at timestamp
 
-### User Context
+### Environment Variables
 
-The `auth.uid()` function returns the current user's ID from the JWT token, which is used in all RLS policies to ensure data isolation.
-
-## Data Flow
-
-### Document Upload Flow
-
-1. User uploads file to Supabase Storage (`documents` bucket)
-2. Backend extracts text and generates embeddings
-3. Text chunks stored in `documents` table with user_id
-4. Job status tracked in `embedding_jobs` table
-
-### Chat Query Flow
-
-1. User submits query via frontend
-2. Backend generates query embedding
-3. `match_documents` function finds similar document chunks
-4. LLM generates response based on retrieved context
-5. Response returned with source citations
-
-### Agent Session Flow
-
-1. User activates TxAgent from frontend
-2. Backend creates entry in `agents` table
-3. TxAgent container processes requests
-4. Session data updated with container info
-5. Agent terminated when user stops or times out
-
-## Environment Variables
-
-Required environment variables for applications using this database:
-
+**Required for TxAgent Container**:
 ```bash
 # Supabase Configuration
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-supabase-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
-SUPABASE_JWT_SECRET=your-supabase-jwt-secret
-
-# Storage
+SUPABASE_URL=https://bfjfjxzdjhraabputkqi.supabase.co
+SUPABASE_ANON_KEY=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...  # For client creation
+SUPABASE_SERVICE_ROLE_KEY=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...  # For admin operations
+SUPABASE_JWT_SECRET=your-jwt-secret-here  # For JWT validation
 SUPABASE_STORAGE_BUCKET=documents
 ```
 
-## Migration History
+## 🚨 CRITICAL AUTHENTICATION ISSUES IDENTIFIED
 
-1. **20250606002722_purple_bush.sql**: Initial schema setup
-2. **20250606015536_empty_brook.sql**: Added embedding_jobs table
-3. **20250607215243_tight_unit.sql**: Fixed RLS policies and function conflicts
+### Issue 1: RLS Policy Dependency on JWT Authentication
 
-## Security Considerations
+**Problem**: RLS policies use `auth.uid()` which requires proper JWT authentication context. If the Supabase client is not properly authenticated, `auth.uid()` returns NULL, causing all RLS policies to fail.
 
-1. **Row Level Security**: All tables enforce user-based data isolation
-2. **JWT Validation**: All requests require valid Supabase JWT tokens
-3. **SECURITY DEFINER**: The `match_documents` function uses SECURITY DEFINER to bypass RLS for vector search while maintaining user filtering
-4. **Foreign Key Constraints**: Ensure data integrity with CASCADE deletes
-5. **Storage Policies**: File access restricted to file owners
+**Current Error Pattern**: 
+- JWT token validation succeeds in TxAgent
+- Supabase client creation fails with `'dict' object has no attribute 'headers'`
+- Database queries fail because `auth.uid()` is NULL
 
-## Performance Considerations
+### Issue 2: Supabase Client Authentication Method
 
-1. **Vector Indexing**: IVFFlat index on embeddings for fast similarity search
-2. **User ID Indexing**: Indexes on user_id columns for efficient RLS filtering
-3. **Status Indexing**: Index on job status for monitoring queries
-4. **Connection Pooling**: Use connection pooling for high-traffic applications
+**Problem**: The current implementation tries to pass JWT tokens incorrectly to the Supabase client.
 
-## Troubleshooting
-
-### Common RLS Issues
-
-- **Error**: "new row violates row-level security policy"
-  - **Solution**: Ensure JWT token is valid and `auth.uid()` matches `user_id`
-
-### Vector Search Issues
-
-- **Error**: "function match_documents does not exist"
-  - **Solution**: Run the latest migration to create the function
-
-### Performance Issues
-
-- **Slow similarity search**: Ensure vector index is created and statistics are updated
-- **Slow user queries**: Ensure user_id indexes are present
-
-## API Integration Examples
-
-### Creating a Document
-
-```javascript
-const { data, error } = await supabase
-  .from('documents')
-  .insert({
-    content: 'Document text content...',
-    embedding: [0.1, 0.2, ...], // 768-dimensional array
-    metadata: { title: 'Document Title', author: 'Author Name' },
-    user_id: user.id
-  });
+**Correct Implementation**:
+```python
+def _get_supabase_client(self, jwt: Optional[str] = None) -> Client:
+    if jwt:
+        client = create_client(supabase_url, supabase_key)
+        # Method 1: Set session from JWT
+        try:
+            client.auth.set_session_from_url(f"#access_token={jwt}&token_type=bearer")
+            return client
+        except:
+            # Method 2: Manual header setting
+            client.auth._headers = {"Authorization": f"Bearer {jwt}"}
+            return client
+    else:
+        return self.supabase
 ```
 
-### Similarity Search
+### Issue 3: Function Parameter Mismatch
 
-```javascript
-const { data, error } = await supabase
-  .rpc('match_documents', {
-    query_embedding: [0.1, 0.2, ...], // 768-dimensional array
-    match_threshold: 0.5,
-    match_count: 5,
-    query_user_id: user.id
-  });
+**Problem**: The `match_documents` function expects `query_user_id` parameter, but if we use `SECURITY INVOKER` instead of `SECURITY DEFINER`, we don't need this parameter.
+
+**Recommended Fix**:
+```sql
+-- Update the function to use SECURITY INVOKER and rely on RLS
+CREATE OR REPLACE FUNCTION match_documents(
+  query_embedding VECTOR(768),
+  match_threshold FLOAT DEFAULT 0.5,
+  match_count INT DEFAULT 5
+)
+RETURNS TABLE (
+  id UUID,
+  content TEXT,
+  metadata JSONB,
+  similarity FLOAT
+)
+LANGUAGE SQL STABLE
+SECURITY INVOKER
+AS $$
+  SELECT
+    documents.id,
+    documents.content,
+    documents.metadata,
+    1 - (documents.embedding <=> query_embedding) AS similarity
+  FROM documents
+  WHERE 1 - (documents.embedding <=> query_embedding) > match_threshold
+  ORDER BY similarity DESC
+  LIMIT match_count;
+$$;
 ```
 
-### Creating an Agent Session
+## 🔧 Recommended Fixes
 
-```javascript
-const { data, error } = await supabase
-  .from('agents')
-  .insert({
-    user_id: user.id,
-    status: 'active',
-    session_data: {
-      container_id: 'container-123',
-      endpoint_url: 'https://container.runpod.net',
-      capabilities: ['embedding', 'chat']
-    }
-  });
+### 1. Update Database Function
+```sql
+-- Drop the existing function
+DROP FUNCTION IF EXISTS match_documents(VECTOR(768), FLOAT, INT, UUID);
+
+-- Create new function without user_id parameter (relies on RLS)
+CREATE OR REPLACE FUNCTION match_documents(
+  query_embedding VECTOR(768),
+  match_threshold FLOAT DEFAULT 0.5,
+  match_count INT DEFAULT 5
+)
+RETURNS TABLE (
+  id UUID,
+  content TEXT,
+  metadata JSONB,
+  similarity FLOAT
+)
+LANGUAGE SQL STABLE
+SECURITY INVOKER
+AS $$
+  SELECT
+    documents.id,
+    documents.content,
+    documents.metadata,
+    1 - (documents.embedding <=> query_embedding) AS similarity
+  FROM documents
+  WHERE 1 - (documents.embedding <=> query_embedding) > match_threshold
+  ORDER BY similarity DESC
+  LIMIT match_count;
+$$;
 ```
 
-This configuration ensures secure, scalable, and efficient operation of the Medical RAG Vector Uploader system with proper data isolation and performance optimization.
+### 2. Update TxAgent Code
+```python
+# In embedder.py, update the RPC call
+result = client.rpc("match_documents", {
+    "query_embedding": query_embedding,
+    "match_threshold": 0.5,
+    "match_count": top_k
+    # Remove query_user_id parameter
+}).execute()
+```
+
+### 3. Test RLS Policies
+```sql
+-- Test if auth.uid() works properly
+SELECT auth.uid();  -- Should return user UUID when authenticated
+
+-- Test document access
+SELECT COUNT(*) FROM documents;  -- Should only return user's documents
+```
+
+## 🧪 Testing Authentication
+
+### Test JWT Token Validation
+```python
+# Test if JWT contains required claims
+import jwt
+token = "your_jwt_token_here"
+payload = jwt.decode(token, options={"verify_signature": False})
+print(f"User ID (sub): {payload.get('sub')}")
+print(f"Audience (aud): {payload.get('aud')}")
+print(f"Role: {payload.get('role')}")
+```
+
+### Test Supabase Client Authentication
+```python
+# Test if client is properly authenticated
+client = create_client(supabase_url, supabase_key)
+client.auth.set_session_from_url(f"#access_token={jwt_token}&token_type=bearer")
+
+# Test if auth.uid() works
+result = client.rpc("auth.uid").execute()
+print(f"Authenticated user ID: {result.data}")
+```
+
+## 📋 Migration Required
+
+To fix the authentication issues, run this migration:
+
+```sql
+-- Update match_documents function
+CREATE OR REPLACE FUNCTION match_documents(
+  query_embedding VECTOR(768),
+  match_threshold FLOAT DEFAULT 0.5,
+  match_count INT DEFAULT 5
+)
+RETURNS TABLE (
+  id UUID,
+  content TEXT,
+  metadata JSONB,
+  similarity FLOAT
+)
+LANGUAGE SQL STABLE
+SECURITY INVOKER
+AS $$
+  SELECT
+    documents.id,
+    documents.content,
+    documents.metadata,
+    1 - (documents.embedding <=> query_embedding) AS similarity
+  FROM documents
+  WHERE 1 - (documents.embedding <=> query_embedding) > match_threshold
+  ORDER BY similarity DESC
+  LIMIT match_count;
+$$;
+```
+
+## 🎯 Summary
+
+The main issue is likely in the combination of:
+1. **Incorrect Supabase client authentication** (fixed in recent updates)
+2. **Database function expecting user_id parameter** when it should rely on RLS
+3. **RLS policies requiring proper JWT context** which isn't being established
+
+The recommended fix is to update the `match_documents` function to use `SECURITY INVOKER` and rely on RLS policies instead of manual user filtering.

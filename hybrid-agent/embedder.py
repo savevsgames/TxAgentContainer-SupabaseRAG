@@ -25,7 +25,7 @@ logger = logging.getLogger("embedder")
 
 # Supabase configuration
 supabase_url = os.getenv("SUPABASE_URL")
-supabase_key = os.getenv("SUPABASE_KEY")
+supabase_key = os.getenv("SUPABASE_ANON_KEY")  # Updated to match environment variable name
 supabase_service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 storage_bucket = os.getenv("SUPABASE_STORAGE_BUCKET", "documents")
 
@@ -74,8 +74,8 @@ class Embedder:
                 # This is the proper way to authenticate with supabase-py
                 client = create_client(supabase_url, supabase_key)
                 
-                # Set the auth token on the client
-                # This will add the Authorization header to all requests
+                # Method 1: Set the auth token using set_session_from_url
+                # This properly sets the JWT token for all subsequent requests
                 client.auth.set_session_from_url(f"#access_token={jwt}&token_type=bearer")
                 
                 logger.info(f"✅ _GET_SUPABASE_CLIENT: Successfully created authenticated client")
@@ -437,7 +437,7 @@ class Embedder:
         
         Args:
             query: Query text
-            user_id: User ID for RLS
+            user_id: User ID for RLS (not needed with updated function)
             top_k: Number of results to return
             jwt: Optional JWT token for authenticated operations
             
@@ -478,19 +478,18 @@ class Embedder:
                 logger.error(f"❌ SIMILARITY_SEARCH: Exception details: {repr(e)}")
                 raise StorageError(f"Failed to get Supabase client: {str(e)}")
             
-            # STEP 3: Prepare RPC parameters
+            # STEP 3: Prepare RPC parameters (updated for new function signature)
             logger.info("🔍 SIMILARITY_SEARCH: STEP 3 - Preparing RPC parameters")
             rpc_params = {
                 "query_embedding": query_embedding,
                 "match_threshold": 0.5,
-                "match_count": top_k,
-                "query_user_id": user_id
+                "match_count": top_k
+                # Removed query_user_id parameter - now handled by RLS
             }
             logger.info(f"🔍 SIMILARITY_SEARCH: RPC function: match_documents")
             logger.info(f"🔍 SIMILARITY_SEARCH: RPC parameters: {list(rpc_params.keys())}")
             logger.info(f"🔍 SIMILARITY_SEARCH: Match threshold: {rpc_params['match_threshold']}")
             logger.info(f"🔍 SIMILARITY_SEARCH: Match count: {rpc_params['match_count']}")
-            logger.info(f"🔍 SIMILARITY_SEARCH: Query user ID: {rpc_params['query_user_id']}")
             
             # STEP 4: Execute RPC call
             logger.info("🔍 SIMILARITY_SEARCH: STEP 4 - Executing RPC call to match_documents")
