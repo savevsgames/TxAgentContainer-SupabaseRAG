@@ -1,9 +1,9 @@
 {
   "info": {
-    "name": "TxAgent Medical RAG API Tests - Updated",
-    "description": "Comprehensive test collection for TxAgent Hybrid Container with centralized authentication and clean database schema",
+    "name": "TxAgent Medical RAG API Tests - Route Fixed",
+    "description": "Comprehensive test collection for TxAgent Hybrid Container with proper route separation and updated schemas",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "version": "2.0.0"
+    "version": "3.0.0"
   },
   "variable": [
     {
@@ -22,7 +22,7 @@
       "key": "job_id",
       "value": "",
       "type": "string",
-      "description": "Embedding job ID from /embed endpoint"
+      "description": "Embedding job ID from /process-document endpoint"
     },
     {
       "key": "agent_id",
@@ -49,15 +49,18 @@
               "    pm.expect(jsonData.status).to.eql('healthy');",
               "});",
               "",
-              "pm.test(\"Response has model info\", function () {",
+              "pm.test(\"Response has detailed health info\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('model');",
               "    pm.expect(jsonData).to.have.property('device');",
               "    pm.expect(jsonData).to.have.property('version');",
-              "    console.log(`Model: ${jsonData.model}, Device: ${jsonData.device}, Version: ${jsonData.version}`);",
+              "    pm.expect(jsonData).to.have.property('uptime');",
+              "    pm.expect(jsonData).to.have.property('memory_usage');",
+              "    console.log(`Model: ${jsonData.model}, Device: ${jsonData.device}`);",
+              "    console.log(`Uptime: ${jsonData.uptime}s, Memory: ${jsonData.memory_usage}`);",
               "});",
               "",
-              "console.log(\"✅ Health check successful - TxAgent container is running with centralized auth\");"
+              "console.log(\"✅ Health check successful - TxAgent container is running with route separation\");"
             ],
             "type": "text/javascript"
           }
@@ -71,7 +74,7 @@
           "host": ["{{base_url}}"],
           "path": ["health"]
         },
-        "description": "Check if the TxAgent container is healthy and running"
+        "description": "Check if the TxAgent container is healthy and running with detailed metrics"
       }
     },
     {
@@ -128,7 +131,7 @@
               "pm.test(\"Response echoes sent data\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('received_data');",
-              "    pm.expect(jsonData.received_data.test).to.eql('centralized_auth');",
+              "    pm.expect(jsonData.received_data.test).to.eql('route_separation');",
               "});",
               "",
               "console.log(\"✅ Test POST endpoint successful\");"
@@ -147,7 +150,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"test\": \"centralized_auth\",\n  \"timestamp\": \"2025-01-08T00:00:00Z\",\n  \"user\": \"postman_test\",\n  \"architecture\": \"consolidated\"\n}"
+          "raw": "{\n  \"test\": \"route_separation\",\n  \"timestamp\": \"2025-01-08T00:00:00Z\",\n  \"user\": \"postman_test\",\n  \"architecture\": \"updated_routes\"\n}"
         },
         "url": {
           "raw": "{{base_url}}/test",
@@ -158,7 +161,7 @@
       }
     },
     {
-      "name": "4. Create Agent Session (Centralized Auth)",
+      "name": "4. Create Agent Session",
       "event": [
         {
           "listen": "test",
@@ -187,7 +190,7 @@
               "    console.log(\"User ID: \" + jsonData.user_id);",
               "});",
               "",
-              "console.log(\"✅ Agent session created successfully using centralized auth service\");"
+              "console.log(\"✅ Agent session created successfully\");"
             ],
             "type": "text/javascript"
           }
@@ -208,18 +211,18 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"session_data\": {\n    \"container_url\": \"{{base_url}}\",\n    \"capabilities\": [\"embedding\", \"chat\"],\n    \"model\": \"dmis-lab/biobert-v1.1\",\n    \"architecture\": \"centralized_auth\",\n    \"created_by\": \"postman_test\"\n  }\n}"
+          "raw": "{\n  \"session_data\": {\n    \"container_url\": \"{{base_url}}\",\n    \"capabilities\": [\"embedding\", \"chat\"],\n    \"model\": \"dmis-lab/biobert-v1.1\",\n    \"architecture\": \"route_separation\",\n    \"created_by\": \"postman_test\"\n  }\n}"
         },
         "url": {
           "raw": "{{base_url}}/agents",
           "host": ["{{base_url}}"],
           "path": ["agents"]
         },
-        "description": "Create a new agent session using centralized authentication service"
+        "description": "Create a new agent session using POST method"
       }
     },
     {
-      "name": "5. Get Active Agent (Centralized Auth)",
+      "name": "5. Get Active Agent",
       "event": [
         {
           "listen": "test",
@@ -243,7 +246,7 @@
               "    }",
               "});",
               "",
-              "console.log(\"✅ Get active agent successful using centralized auth\");"
+              "console.log(\"✅ Get active agent successful\");"
             ],
             "type": "text/javascript"
           }
@@ -255,7 +258,7 @@
           {
             "key": "Authorization",
             "value": "Bearer {{jwt_token}}",
-            "description": "JWT token validated by centralized auth service"
+            "description": "JWT token for authentication"
           }
         ],
         "url": {
@@ -263,11 +266,75 @@
           "host": ["{{base_url}}"],
           "path": ["agents", "active"]
         },
-        "description": "Get active agent session using centralized authentication"
+        "description": "Get active agent session using GET method"
       }
     },
     {
-      "name": "6. Embed Medical Document (Clean Schema)",
+      "name": "6. Text Embedding (Chat Flow)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response has embedding array\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('embedding');",
+              "    pm.expect(jsonData.embedding).to.be.an('array');",
+              "    console.log(\"Embedding length: \" + jsonData.embedding.length);",
+              "});",
+              "",
+              "pm.test(\"Embedding has exactly 768 dimensions\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.dimensions).to.eql(768);",
+              "    pm.expect(jsonData.embedding.length).to.eql(768);",
+              "    console.log(\"✅ BioBERT embedding has correct 768 dimensions\");",
+              "});",
+              "",
+              "pm.test(\"Response has model and timing info\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('model');",
+              "    pm.expect(jsonData).to.have.property('processing_time');",
+              "    pm.expect(jsonData.model).to.eql('BioBERT');",
+              "    console.log(\"Processing time: \" + jsonData.processing_time + \"ms\");",
+              "});",
+              "",
+              "console.log(\"✅ Text embedding successful - ready for chat flow\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token (optional for embedding)"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"text\": \"What are the symptoms of myocardial infarction?\",\n  \"normalize\": true\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/embed",
+          "host": ["{{base_url}}"],
+          "path": ["embed"]
+        },
+        "description": "Generate BioBERT embedding for text (chat flow endpoint)"
+      }
+    },
+    {
+      "name": "7. Process Medical Document",
       "event": [
         {
           "listen": "test",
@@ -296,7 +363,7 @@
               "    console.log(\"Message: \" + jsonData.message);",
               "});",
               "",
-              "console.log(\"✅ Document embedding job created successfully with clean schema\");"
+              "console.log(\"✅ Document processing job created successfully\");"
             ],
             "type": "text/javascript"
           }
@@ -308,7 +375,7 @@
           {
             "key": "Authorization",
             "value": "Bearer {{jwt_token}}",
-            "description": "JWT token for RLS-compliant operations"
+            "description": "JWT token required for document processing"
           },
           {
             "key": "Content-Type",
@@ -320,15 +387,15 @@
           "raw": "{\n  \"file_path\": \"test-documents/morgellons-disease.md\",\n  \"metadata\": {\n    \"title\": \"Rare Medical Conditions: Morgellons Disease\",\n    \"author\": \"Dr. Sarah Johnson\",\n    \"category\": \"dermatology\",\n    \"year\": \"2024\",\n    \"source\": \"Medical Research Database\",\n    \"document_type\": \"research_paper\",\n    \"keywords\": [\"morgellons\", \"dermatology\", \"rare_disease\", \"fibers\"],\n    \"test_document\": true\n  }\n}"
         },
         "url": {
-          "raw": "{{base_url}}/embed",
+          "raw": "{{base_url}}/process-document",
           "host": ["{{base_url}}"],
-          "path": ["embed"]
+          "path": ["process-document"]
         },
-        "description": "Process and embed a medical document using the clean database schema"
+        "description": "Process and embed a medical document (document processing flow)"
       }
     },
     {
-      "name": "7. Get Job Status (RLS Compliant)",
+      "name": "8. Get Job Status",
       "event": [
         {
           "listen": "test",
@@ -346,17 +413,17 @@
               "        console.log(\"Job status: \" + jsonData.status);",
               "        ",
               "        if (jsonData.status === 'completed') {",
-              "            console.log(\"✅ Document embedding completed successfully\");",
+              "            console.log(\"✅ Document processing completed successfully\");",
               "            console.log(\"Chunks created: \" + (jsonData.chunk_count || 'unknown'));",
               "            if (jsonData.document_ids && jsonData.document_ids.length > 0) {",
               "                console.log(\"Document IDs: \" + jsonData.document_ids.join(', '));",
               "            }",
               "        } else if (jsonData.status === 'processing') {",
-              "            console.log(\"⏳ Document embedding is still processing\");",
+              "            console.log(\"⏳ Document processing is still in progress\");",
               "        } else if (jsonData.status === 'failed') {",
-              "            console.log(\"❌ Document embedding failed: \" + (jsonData.error || 'unknown error'));",
+              "            console.log(\"❌ Document processing failed: \" + (jsonData.error || 'unknown error'));",
               "        } else if (jsonData.status === 'pending') {",
-              "            console.log(\"⏳ Document embedding is pending\");",
+              "            console.log(\"⏳ Document processing is pending\");",
               "        }",
               "    });",
               "} else {",
@@ -381,11 +448,11 @@
           "host": ["{{base_url}}"],
           "path": ["embedding-jobs", "{{job_id}}"]
         },
-        "description": "Check embedding job status with RLS compliance"
+        "description": "Check document processing job status"
       }
     },
     {
-      "name": "8. Chat Query - Morgellons Symptoms (Vector Search)",
+      "name": "9. Chat Query - Morgellons Symptoms",
       "event": [
         {
           "listen": "test",
@@ -402,6 +469,16 @@
               "    console.log(\"Response preview: \" + jsonData.response.substring(0, 150) + \"...\");",
               "});",
               "",
+              "pm.test(\"Response has enhanced metadata\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('processing_time');",
+              "    pm.expect(jsonData).to.have.property('model');",
+              "    pm.expect(jsonData).to.have.property('tokens_used');",
+              "    console.log(\"Processing time: \" + jsonData.processing_time + \"ms\");",
+              "    console.log(\"Model: \" + jsonData.model);",
+              "    console.log(\"Tokens used: \" + jsonData.tokens_used);",
+              "});",
+              "",
               "pm.test(\"Response has sources array\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('sources');",
@@ -411,16 +488,18 @@
               "        console.log(\"Sources found: \" + jsonData.sources.length);",
               "        console.log(\"Top similarity score: \" + jsonData.sources[0].similarity);",
               "        ",
-              "        // Test that sources have required fields",
+              "        // Test enhanced source metadata",
               "        pm.expect(jsonData.sources[0]).to.have.property('content');",
               "        pm.expect(jsonData.sources[0]).to.have.property('metadata');",
               "        pm.expect(jsonData.sources[0]).to.have.property('similarity');",
+              "        pm.expect(jsonData.sources[0]).to.have.property('filename');",
+              "        pm.expect(jsonData.sources[0]).to.have.property('chunk_id');",
               "    } else {",
-              "        console.log(\"No sources found - may need to wait for embedding to complete\");",
+              "        console.log(\"No sources found - may need to wait for processing to complete\");",
               "    }",
               "});",
               "",
-              "console.log(\"✅ Chat query successful using standardized match_documents function\");"
+              "console.log(\"✅ Chat query successful with enhanced response metadata\");"
             ],
             "type": "text/javascript"
           }
@@ -432,7 +511,7 @@
           {
             "key": "Authorization",
             "value": "Bearer {{jwt_token}}",
-            "description": "JWT token for RLS-filtered vector search"
+            "description": "JWT token for authenticated chat"
           },
           {
             "key": "Content-Type",
@@ -448,11 +527,11 @@
           "host": ["{{base_url}}"],
           "path": ["chat"]
         },
-        "description": "Query about Morgellons symptoms using the standardized vector search function"
+        "description": "Query about Morgellons symptoms using updated chat endpoint"
       }
     },
     {
-      "name": "9. Chat Query - Treatment Options (BioBERT)",
+      "name": "10. Chat Query - Treatment Options",
       "event": [
         {
           "listen": "test",
@@ -469,12 +548,14 @@
               "    console.log(\"Response preview: \" + jsonData.response.substring(0, 150) + \"...\");",
               "});",
               "",
-              "pm.test(\"Vector search working\", function () {",
+              "pm.test(\"BioBERT processing metrics\", function () {",
               "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('sources');",
+              "    pm.expect(jsonData).to.have.property('processing_time');",
+              "    pm.expect(jsonData).to.have.property('model');",
+              "    pm.expect(jsonData.model).to.eql('BioBERT');",
               "    ",
               "    if (jsonData.sources.length > 0) {",
-              "        console.log(\"BioBERT embeddings found \" + jsonData.sources.length + \" relevant chunks\");",
+              "        console.log(\"BioBERT found \" + jsonData.sources.length + \" relevant chunks\");",
               "        ",
               "        // Check that similarity scores are reasonable",
               "        jsonData.sources.forEach((source, index) => {",
@@ -499,7 +580,7 @@
           {
             "key": "Authorization",
             "value": "Bearer {{jwt_token}}",
-            "description": "JWT token for authenticated vector search"
+            "description": "JWT token for authenticated operations"
           },
           {
             "key": "Content-Type",
@@ -519,7 +600,7 @@
       }
     },
     {
-      "name": "10. Chat Query - Research Controversy",
+      "name": "11. Chat Query - Research Controversy",
       "event": [
         {
           "listen": "test",
@@ -537,18 +618,24 @@
               "    // Check that response is substantial for complex query",
               "    pm.expect(jsonData.response.length).to.be.at.least(50);",
               "    console.log(\"Response length: \" + jsonData.response.length + \" characters\");",
+              "    console.log(\"Tokens used: \" + jsonData.tokens_used);",
               "});",
               "",
-              "pm.test(\"Sources provide context\", function () {",
+              "pm.test(\"Sources provide context with enhanced metadata\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('sources');",
               "    ",
               "    if (jsonData.sources.length > 0) {",
               "        console.log(\"Found \" + jsonData.sources.length + \" contextual sources\");",
               "        ",
-              "        // Check metadata structure",
-              "        if (jsonData.sources[0].metadata) {",
-              "            console.log(\"Metadata keys: \" + Object.keys(jsonData.sources[0].metadata).join(', '));",
+              "        // Check enhanced metadata structure",
+              "        var firstSource = jsonData.sources[0];",
+              "        pm.expect(firstSource).to.have.property('filename');",
+              "        pm.expect(firstSource).to.have.property('chunk_id');",
+              "        pm.expect(firstSource).to.have.property('similarity');",
+              "        ",
+              "        if (firstSource.metadata) {",
+              "            console.log(\"Metadata keys: \" + Object.keys(firstSource.metadata).join(', '));",
               "        }",
               "    }",
               "});",
@@ -585,7 +672,7 @@
       }
     },
     {
-      "name": "11. Chat Query - No Results Test",
+      "name": "12. Chat Query - No Results Test",
       "event": [
         {
           "listen": "test",
@@ -603,11 +690,16 @@
               "    if (jsonData.status === 'no_results') {",
               "        console.log(\"✅ System correctly indicated no relevant results\");",
               "        pm.expect(jsonData.response).to.include(\"couldn't find\");",
+              "        pm.expect(jsonData.tokens_used).to.eql(0);",
               "    } else {",
               "        console.log(\"System attempted to answer with available context\");",
               "        // Should have very few or no sources for irrelevant query",
               "        pm.expect(jsonData.sources.length).to.be.at.most(2);",
               "    }",
+              "    ",
+              "    // Should still have processing metrics",
+              "    pm.expect(jsonData).to.have.property('processing_time');",
+              "    pm.expect(jsonData).to.have.property('model');",
               "});",
               "",
               "console.log(\"✅ No results handling test completed\");"
@@ -631,7 +723,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"query\": \"What is the weather forecast for Mars next week?\",\n  \"history\": [],\n  \"top_k\": 3,\n  \"temperature\": 0.5\n}"
+          "raw": "{\n  \"query\": \"What is the weather forecast for Mars next week?\",\n  \"history\": [],\n  \"top_k\": 3,\n  \"temperature\": 0.5,\n  \"stream\": false\n}"
         },
         "url": {
           "raw": "{{base_url}}/chat",
@@ -642,7 +734,7 @@
       }
     },
     {
-      "name": "12. Terminate Agent Session (Clean Cleanup)",
+      "name": "13. Terminate Agent Session",
       "event": [
         {
           "listen": "test",
@@ -685,7 +777,7 @@
       }
     },
     {
-      "name": "13. Test Authentication Failure",
+      "name": "14. Test Authentication Failure",
       "event": [
         {
           "listen": "test",
@@ -731,7 +823,7 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"query\": \"This should fail due to invalid token\"\n}"
+          "raw": "{\n  \"query\": \"This should fail due to invalid token\",\n  \"history\": [],\n  \"top_k\": 5,\n  \"temperature\": 0.7,\n  \"stream\": false\n}"
         },
         "url": {
           "raw": "{{base_url}}/chat",
@@ -742,13 +834,13 @@
       }
     },
     {
-      "name": "14. Test RLS Isolation",
+      "name": "15. Test RLS Isolation",
       "event": [
         {
           "listen": "test",
           "script": {
             "exec": [
-              "pm.test(\"Status code is 401 or 403\", function () {",
+              "pm.test(\"Status code is 401, 403, or 404\", function () {",
               "    pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]);",
               "});",
               "",
@@ -780,6 +872,76 @@
         },
         "description": "Test that RLS prevents access to non-existent or other user's data"
       }
+    },
+    {
+      "name": "16. Test Embedding Dimensions",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Embedding has exactly 768 dimensions\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('embedding');",
+              "    pm.expect(jsonData).to.have.property('dimensions');",
+              "    pm.expect(jsonData.dimensions).to.eql(768);",
+              "    pm.expect(jsonData.embedding).to.be.an('array');",
+              "    pm.expect(jsonData.embedding.length).to.eql(768);",
+              "    console.log(\"✅ BioBERT embedding has exactly 768 dimensions\");",
+              "});",
+              "",
+              "pm.test(\"Embedding values are normalized floats\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    var embedding = jsonData.embedding;",
+              "    ",
+              "    // Check that all values are numbers",
+              "    embedding.forEach((value, index) => {",
+              "        pm.expect(value).to.be.a('number');",
+              "        pm.expect(value).to.be.at.least(-1);",
+              "        pm.expect(value).to.be.at.most(1);",
+              "    });",
+              "    ",
+              "    console.log(\"Sample embedding values: [\" + embedding.slice(0, 5).map(v => v.toFixed(4)).join(', ') + \", ...]\");",
+              "});",
+              "",
+              "pm.test(\"Response includes processing metadata\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('model');",
+              "    pm.expect(jsonData).to.have.property('processing_time');",
+              "    pm.expect(jsonData.model).to.eql('BioBERT');",
+              "    pm.expect(jsonData.processing_time).to.be.a('number');",
+              "    console.log(\"Processing time: \" + jsonData.processing_time + \"ms\");",
+              "});",
+              "",
+              "console.log(\"✅ Embedding dimensions test successful - ready for companion app integration\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"text\": \"Test medical text for embedding validation\",\n  \"normalize\": true\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/embed",
+          "host": ["{{base_url}}"],
+          "path": ["embed"]
+        },
+        "description": "Validate BioBERT embedding dimensions for companion app compatibility"
+      }
     }
   ],
   "event": [
@@ -789,14 +951,15 @@
         "type": "text/javascript",
         "exec": [
           "// Pre-request script for the entire collection",
-          "console.log('🚀 Starting TxAgent API Tests with Centralized Authentication');",
+          "console.log('🚀 Starting TxAgent API Tests with Route Separation');",
           "console.log('📋 Testing Features:');",
-          "console.log('   - Centralized authentication service');",
-          "console.log('   - Clean database schema (single migration)');",
-          "console.log('   - RLS-compliant operations');",
+          "console.log('   - Route separation (POST /embed vs POST /process-document)');",
+          "console.log('   - Enhanced request/response schemas');",
           "console.log('   - BioBERT embeddings (768-dimensional)');",
-          "console.log('   - Standardized match_documents function');",
-          "console.log('   - User data isolation');",
+          "console.log('   - Chat flow with proper query field');",
+          "console.log('   - Document processing flow with job tracking');",
+          "console.log('   - Centralized authentication service');",
+          "console.log('   - Performance metrics and timing');",
           "",
           "// Validate that required variables are set",
           "if (!pm.collectionVariables.get('base_url') || pm.collectionVariables.get('base_url') === 'https://your-txagent-container-url.proxy.runpod.net') {",

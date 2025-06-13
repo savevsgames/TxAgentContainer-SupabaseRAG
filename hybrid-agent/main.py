@@ -9,6 +9,7 @@ import uvicorn
 from dotenv import load_dotenv
 import uuid
 import time
+import psutil
 
 from embedder import Embedder
 from llm import LLMHandler
@@ -66,10 +67,23 @@ except Exception as e:
     request_logger.log_system_event("model_load", {"status": "failed", "error": str(e)}, level="warning")
     llm_handler = None
 
+# Track startup time for uptime calculation
+startup_time = time.time()
+
 # Define request and response models
 class DocumentRequest(BaseModel):
     file_path: str
     metadata: Dict[str, Any] = {}
+
+class EmbedRequest(BaseModel):
+    text: str = Field(..., description="Text to generate BioBERT embedding for")
+    normalize: bool = Field(True, description="Whether to normalize the embedding vector")
+
+class EmbedResponse(BaseModel):
+    embedding: List[float] = Field(..., description="768-dimensional BioBERT embedding")
+    dimensions: int = Field(768, description="Number of dimensions in the embedding")
+    model: str = Field("BioBERT", description="Model used for embedding generation")
+    processing_time: int = Field(..., description="Processing time in milliseconds")
 
 class JobResponse(BaseModel):
     job_id: str
@@ -80,16 +94,19 @@ class JobResponse(BaseModel):
     message: str
 
 class ChatRequest(BaseModel):
-    query: str
-    history: List[Dict[str, str]] = []
-    top_k: int = 5
-    temperature: float = 0.7
-    stream: bool = False
+    query: str = Field(..., description="User's medical question or query")
+    history: List[Dict[str, str]] = Field(default=[], description="Previous conversation history")
+    top_k: int = Field(5, description="Number of similar documents to retrieve")
+    temperature: float = Field(0.7, description="Temperature for response generation")
+    stream: bool = Field(False, description="Whether to stream the response")
 
 class ChatResponse(BaseModel):
-    response: str
-    sources: List[Dict[str, Any]] = []
-    status: str = "success"
+    response: str = Field(..., description="Generated response to the query")
+    sources: List[Dict[str, Any]] = Field(default=[], description="Source documents used for the response")
+    processing_time: Optional[int] = Field(None, description="Processing time in milliseconds")
+    model: str = Field("BioBERT", description="Model used for processing")
+    tokens_used: Optional[int] = Field(None, description="Number of tokens used in processing")
+    status: str = Field("success", description="Status of the request")
 
 class AgentSessionRequest(BaseModel):
     session_data: Dict[str, Any] = {}
@@ -107,6 +124,8 @@ class HealthResponse(BaseModel):
     model: str = os.getenv("MODEL_NAME", "dmis-lab/biobert-v1.1")
     device: str = os.getenv("DEVICE", "cuda")
     version: str = "1.0.0"
+    uptime: Optional[int] = None
+    memory_usage: Optional[str] = None
 
 # Middleware to log all requests using centralized auth service
 @app.middleware("http")
@@ -231,29 +250,88 @@ async def process_document_task(job_id: str, file_path: str, metadata: Dict[str,
         }, level="error")
 
 # API Endpoints
-@app.post("/embed", response_model=JobResponse)
+
+@app.post("/embed", response_model=EmbedResponse)
 @log_request("/embed")
-async def embed_document(
+async def embed_text(
+    request: EmbedRequest,
+    authorization: Optional[str] = Header(None)
+):
+    """
+    Generate BioBERT embedding for text.
+    
+    This endpoint is used by the companion app's chat flow to convert
+    user queries into 768-dimensional BioBERT embeddings for similarity search.
+    """
+    logger.info(f"🚀 EMBED TEXT REQUEST: {request.text[:50]}...")
+    
+    try:
+        # Validate JWT if provided (optional for embedding)
+        user_context = None
+        if authorization:
+            token = auth_service.extract_token_from_header(authorization)
+            user_id, user_payload = auth_service.validate_token_and_get_user(token)
+            user_context = user_payload
+            logger.info(f"✅ Embed request authenticated for user: {user_id}")
+        
+        # Generate embedding
+        start_time = time.time()
+        embedding = embedder._create_embedding(request.text)
+        processing_time = int((time.time() - start_time) * 1000)
+        
+        # Ensure exactly 768 dimensions
+        if len(embedding) != 768:
+            logger.error(f"❌ Embedding dimension mismatch: {len(embedding)} != 768")
+            raise HTTPException(status_code=500, detail="Invalid embedding dimensions")
+        
+        # Normalize if requested
+        if request.normalize:
+            import numpy as np
+            embedding_array = np.array(embedding)
+            norm = np.linalg.norm(embedding_array)
+            if norm > 0:
+                embedding = (embedding_array / norm).tolist()
+        
+        logger.info(f"✅ Generated {len(embedding)}-dimensional embedding in {processing_time}ms")
+        
+        return EmbedResponse(
+            embedding=embedding,
+            dimensions=768,
+            model="BioBERT",
+            processing_time=processing_time
+        )
+        
+    except HTTPException as e:
+        logger.error(f"❌ HTTP error in embed endpoint: {e.detail}")
+        raise
+    except Exception as e:
+        logger.error(f"❌ Unexpected error in embed endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Embedding generation failed: {str(e)}")
+
+@app.post("/process-document", response_model=JobResponse)
+@log_request("/process-document")
+async def process_document(
     request: DocumentRequest,
     background_tasks: BackgroundTasks,
     authorization: Optional[str] = Header(None)
 ):
     """
-    Embed a document from Supabase Storage.
+    Process and embed a document from Supabase Storage.
     
-    This endpoint processes a document, extracts text, and creates embeddings.
+    This endpoint processes a full document, extracts text, chunks it,
+    and creates embeddings for storage in the vector database.
     The document must exist in Supabase Storage and be accessible by the user.
     """
-    logger.info(f"🚀 EMBED REQUEST: {request.file_path}")
+    logger.info(f"🚀 PROCESS DOCUMENT REQUEST: {request.file_path}")
     
     try:
         # Validate JWT and get user ID using centralized auth service
         token = auth_service.extract_token_from_header(authorization)
         user_id, user_payload = auth_service.validate_token_and_get_user(token)
         
-        logger.info(f"✅ Embed request authenticated for user: {user_id}")
+        logger.info(f"✅ Process document request authenticated for user: {user_id}")
         
-        auth_service.log_auth_event("embed_request", user_context=user_payload, success=True, details={
+        auth_service.log_auth_event("process_document_request", user_context=user_payload, success=True, details={
             "file_path": request.file_path,
             "metadata_keys": list(request.metadata.keys())
         })
@@ -283,11 +361,11 @@ async def embed_document(
             message=f"Document {request.file_path} is being processed in the background"
         )
     except HTTPException as e:
-        logger.error(f"❌ HTTP error in embed endpoint: {e.detail}")
-        auth_service.log_auth_event("embed_request", success=False, details={"error": e.detail})
+        logger.error(f"❌ HTTP error in process document endpoint: {e.detail}")
+        auth_service.log_auth_event("process_document_request", success=False, details={"error": e.detail})
         raise
     except Exception as e:
-        logger.error(f"❌ Unexpected error in embed endpoint: {str(e)}")
+        logger.error(f"❌ Unexpected error in process document endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing document: {str(e)}")
 
 @app.get("/embedding-jobs/{job_id}", response_model=JobResponse)
@@ -348,6 +426,8 @@ async def chat(
             "temperature": request.temperature
         })
         
+        start_time = time.time()
+        
         # Perform similarity search - pass the JWT token string
         logger.info(f"🔍 CHAT: Calling similarity_search with JWT token")
         similar_docs = embedder.similarity_search(
@@ -361,6 +441,9 @@ async def chat(
             return ChatResponse(
                 response="I couldn't find any relevant information to answer your question. Please make sure you have uploaded some documents first.",
                 sources=[],
+                processing_time=int((time.time() - start_time) * 1000),
+                model="BioBERT",
+                tokens_used=0,
                 status="no_results"
             )
         
@@ -371,28 +454,40 @@ async def chat(
                 context=similar_docs,
                 temperature=request.temperature
             )
+            tokens_used = len(response.split())  # Rough token estimate
         else:
             # Fallback response if LLM not available
             response = f"Based on the documents I found, here's relevant information: {similar_docs[0]['content'][:200]}..."
+            tokens_used = len(response.split())
         
         # Format sources for response
         sources = [
             {
                 "content": doc["content"][:200] + "...",
                 "metadata": doc["metadata"],
-                "similarity": doc["similarity"]
+                "similarity": doc["similarity"],
+                "filename": doc.get("filename", "Unknown"),
+                "chunk_id": f"chunk_{i}",
+                "page": doc.get("metadata", {}).get("page")
             } 
-            for doc in similar_docs
+            for i, doc in enumerate(similar_docs)
         ]
         
-        request_logger.log_performance_metric("chat_response", time.time(), user_context=user_payload, metadata={
+        processing_time = int((time.time() - start_time) * 1000)
+        
+        request_logger.log_performance_metric("chat_response", time.time() - start_time, user_context=user_payload, metadata={
             "sources_found": len(sources),
-            "response_length": len(response)
+            "response_length": len(response),
+            "tokens_used": tokens_used
         })
         
         return ChatResponse(
             response=response,
-            sources=sources
+            sources=sources,
+            processing_time=processing_time,
+            model="BioBERT",
+            tokens_used=tokens_used,
+            status="success"
         )
     except HTTPException as e:
         logger.error(f"❌ HTTP error in chat endpoint: {e.detail}")
@@ -557,12 +652,36 @@ async def test_post(data: Dict[str, Any] = None):
     request_logger.log_system_event("test_endpoint", {"method": "POST", "data": data, "status": "success"})
     return {"message": "POST endpoint working", "received_data": data, "timestamp": time.time()}
 
-@app.get("/health", response_model=HealthResponse)
+@app.get("/health")
 async def health_check():
-    """Check if the service is healthy."""
+    """
+    Check if the service is healthy.
+    
+    Returns detailed health information including uptime, memory usage,
+    and model status for monitoring and debugging.
+    """
     logger.info("🚀 HEALTH CHECK REQUEST")
     request_logger.log_system_event("health_check", {"status": "healthy"})
-    return HealthResponse()
+    
+    # Calculate uptime
+    uptime_seconds = int(time.time() - startup_time)
+    
+    # Get memory usage
+    try:
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        memory_usage = f"{memory_info.rss / 1024 / 1024:.1f}MB"
+    except:
+        memory_usage = "Unknown"
+    
+    return {
+        "status": "healthy",
+        "model": os.getenv("MODEL_NAME", "dmis-lab/biobert-v1.1"),
+        "device": os.getenv("DEVICE", "cuda"),
+        "version": "1.0.0",
+        "uptime": uptime_seconds,
+        "memory_usage": memory_usage
+    }
 
 if __name__ == "__main__":
     host = os.getenv("HOST", "0.0.0.0")
