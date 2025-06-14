@@ -225,14 +225,13 @@ class AuthService:
         """
         Get a PostgREST client authenticated with a JWT token.
 
-        This client is configured to respect Supabase RLS (Row-Level Security)
-        policies by injecting the JWT token into the Authorization header.
+        This client supports Supabase RLS by injecting the JWT via the auth() method.
 
         Args:
             jwt_token: Optional JWT token for authenticated operations
 
         Returns:
-            postgrest.PostgrestClient instance with proper Authorization header
+            PostgrestClient instance with proper Authorization header
 
         Raises:
             StorageError: If client creation fails
@@ -240,11 +239,11 @@ class AuthService:
         logger.info(f"🔍 GET_CLIENT: Creating Supabase client with JWT: {bool(jwt_token)}")
 
         try:
-            # Create low-level PostgREST client
+            # Initialize PostgREST client with base URL
             client = PostgrestClient(f"{SUPABASE_URL}/rest/v1")
 
-            # Inject Authorization header to support RLS policies
-            client.headers["Authorization"] = f"Bearer {jwt_token or SUPABASE_ANON_KEY}"
+            # Use .auth() method instead of manipulating headers directly
+            client.auth(jwt_token if jwt_token else SUPABASE_ANON_KEY)
             logger.info(f"✅ GET_CLIENT: {'Authenticated' if jwt_token else 'Anonymous'} client created")
 
             return client
@@ -252,6 +251,7 @@ class AuthService:
         except Exception as e:
             logger.error(f"❌ GET_CLIENT: Error creating client: {str(e)}")
             raise StorageError(f"Failed to create Supabase client: {str(e)}")
+
 
         
     async def get_user_from_request(self, request: Request) -> str:
