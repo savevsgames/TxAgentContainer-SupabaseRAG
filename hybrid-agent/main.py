@@ -191,7 +191,7 @@ async def log_requests(request: Request, call_next):
         raise
 
 # Background task to process document
-async def process_document_task(job_id: str, file_path: str, metadata: Dict[str, Any], user_id: str, jwt: str):
+def process_document_task(job_id: str, file_path: str, metadata: Dict[str, Any], user_id: str, jwt: str):
     print(f"📦 Background task started for job {job_id}")
     
     """Background task to process and embed a document."""
@@ -203,13 +203,13 @@ async def process_document_task(job_id: str, file_path: str, metadata: Dict[str,
     
     try:
         # Update job status to processing - pass JWT token
-        await embedder.update_job_status(job_id, "processing", jwt=jwt)
+        embedder.update_job_status(job_id, "processing", jwt=jwt)
         
         # Process document
         document_chunks = embedder.process_document(file_path, metadata, jwt)
         
         if not document_chunks:
-            await embedder.update_job_status(
+            embedder.update_job_status(
                 job_id,
                 "failed",
                 error="No content extracted from document",
@@ -225,7 +225,7 @@ async def process_document_task(job_id: str, file_path: str, metadata: Dict[str,
         document_ids = embedder.store_embeddings(document_chunks, user_id, jwt)
         
         # Update job with success status and document IDs - pass JWT token
-        await embedder.update_job_status(
+        embedder.update_job_status(
             job_id,
             "completed",
             chunk_count=len(document_chunks),
@@ -240,7 +240,7 @@ async def process_document_task(job_id: str, file_path: str, metadata: Dict[str,
         })
         
     except Exception as e:
-        await embedder.update_job_status(
+        embedder.update_job_status(
             job_id,
             "failed",
             error=str(e),
@@ -445,7 +445,7 @@ async def chat(
         
         # Perform similarity search - pass the JWT token string
         logger.info(f"🔍 CHAT: Calling similarity_search with JWT token")
-        similar_docs = await embedder.similarity_search(
+        similar_docs = embedder.similarity_search(
             query=request.query,
             user_id=user_id,
             top_k=request.top_k,
