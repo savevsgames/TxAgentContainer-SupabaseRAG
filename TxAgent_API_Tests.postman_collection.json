@@ -942,6 +942,66 @@
         },
         "description": "Validate BioBERT embedding dimensions for companion app compatibility"
       }
+    },
+    {
+      "name": "17. RPC - Create Agent Session (Enhanced Debug)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Agent session created successfully\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('id');",
+              "    pm.expect(jsonData).to.have.property('user_id');",
+              "    pm.expect(jsonData).to.have.property('session_data');",
+              "    pm.collectionVariables.set('agent_id', jsonData.id);",
+              "    console.log(\"✅ Agent Session ID:\", jsonData.id);",
+              "    console.log(\"🔍 User ID:\", jsonData.user_id);",
+              "    console.log(\"📦 Session Data:\", JSON.stringify(jsonData.session_data, null, 2));",
+              "});",
+              "",
+              "pm.test(\"Response contains status and timestamp\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('status');",
+              "    pm.expect(jsonData).to.have.property('created_at');",
+              "    console.log(\"🕓 Created At:\", jsonData.created_at);",
+              "});",
+              "",
+              "console.log(\"✅ Enhanced RPC agent session test passed\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT with sub, aud, role"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"session_data\": {\n    \"origin\": \"enhanced_debug_postman\",\n    \"container_url\": \"{{base_url}}\",\n    \"rpc_test\": true,\n    \"description\": \"Testing RPC create_agent_session with enhanced logging\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/agents",
+          "host": ["{{base_url}}"],
+          "path": ["agents"]
+        },
+        "description": "Explicit RPC debug test for create_agent_session using Supabase RPC endpoint"
+      }
     }
   ],
   "event": [

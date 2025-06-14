@@ -255,7 +255,7 @@ async def process_document_task(job_id: str, file_path: str, metadata: Dict[str,
 @app.get("/test-rpc")
 async def test_rpc(authorization: Optional[str] = Header(None)):
     token = auth_service.extract_token_from_header(authorization)
-    client = auth_service.get_authenticated_client(token)
+    client = await auth_service.get_authenticated_client(token)
     try:
         result = await client.rpc("get_active_agent").execute()
         return {"data": result.data}
@@ -532,7 +532,7 @@ async def create_agent_session(
         logger.info(f"✅ Create agent session authenticated for user: {user_id}")
         
         # Get authenticated Supabase client using centralized auth service
-        client = auth_service.get_authenticated_client(token)
+        client = await auth_service.get_authenticated_client(token)
         
         # Create agent session using the database function
         result = await client.rpc("create_agent_session", {
@@ -583,7 +583,7 @@ async def get_active_agent(
         logger.info(f"✅ Get active agent authenticated for user: {user_id}")
         
         # Get authenticated Supabase client using centralized auth service
-        client = auth_service.get_authenticated_client(token)
+        client = await auth_service.get_authenticated_client(token)
         
         # Get active agent session
         result = await client.rpc("get_active_agent").execute()
@@ -630,7 +630,7 @@ async def terminate_agent_session(
         logger.info(f"✅ Terminate agent session authenticated for user: {user_id}")
         
         # Get authenticated Supabase client using centralized auth service
-        client = auth_service.get_authenticated_client(token)
+        client = await auth_service.get_authenticated_client(token)
         
         # Terminate agent session
         result = await client.rpc("terminate_agent_session", {
