@@ -58,36 +58,37 @@ class Embedder:
     async def create_embedding_job(self, job_id: str, file_path: str, user_id: str, jwt: Optional[str] = None) -> Dict[str, Any]:
         """
         Create a new embedding job record using centralized auth service.
-        
+
         Args:
             job_id: Unique identifier for the job
             file_path: Path to the file in Supabase Storage
             user_id: User ID who initiated the job
             jwt: JWT token for authenticated operations
-            
+
         Returns:
             Created job record
         """
         logger.info(f"🔍 CREATE_EMBEDDING_JOB: Starting for user {user_id}")
         logger.info(f"🔍 CREATE_EMBEDDING_JOB: JWT provided: {bool(jwt)}")
-        
-        # Use centralized auth service to get authenticated PostgREST client
+
         client = auth_service.get_authenticated_client(jwt)
 
         try:
-            result = client.from_("embedding_jobs").insert({
+            result = await client.from_("embedding_jobs").insert({
                 "id": job_id,
                 "file_path": file_path,
                 "status": "pending",
                 "user_id": user_id
             }).execute()
-            
+
             logger.info(f"✅ CREATE_EMBEDDING_JOB: Successfully created job {job_id}")
-            return result[1][0] if result[1] else None  # (count, rows) tuple in postgrest-py
+            return result.data[0] if result.data else None
+
         except Exception as e:
             logger.error(f"❌ CREATE_EMBEDDING_JOB: Error creating embedding job: {str(e)}")
             logger.error(f"❌ CREATE_EMBEDDING_JOB: Exception type: {type(e).__name__}")
             raise
+
 
 
     async def update_job_status(
