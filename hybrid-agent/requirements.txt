@@ -18,3 +18,4 @@ fastapi==0.95.2
 pydantic==1.10.13
 postgrest==0.10.6
 httpx==0.23.3
+PyJWT>=2.0.0
