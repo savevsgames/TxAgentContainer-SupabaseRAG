@@ -16,6 +16,6 @@ openai>=1.12.0
 psutil>=5.9.0
 fastapi==0.95.2
 pydantic==1.10.13
-postgrest==0.10.6
+postgrest-py==0.10.6
 httpx==0.23.3
 PyJWT>=2.0.0
