@@ -435,7 +435,7 @@ async def chat(
         
         # Perform similarity search - pass the JWT token string
         logger.info(f"🔍 CHAT: Calling similarity_search with JWT token")
-        similar_docs = embedder.similarity_search(
+        similar_docs = await embedder.similarity_search(
             query=request.query,
             user_id=user_id,
             top_k=request.top_k,

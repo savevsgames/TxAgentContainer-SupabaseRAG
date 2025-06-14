@@ -409,7 +409,7 @@ class Embedder:
         logger.info(f"✅ STORE_EMBEDDINGS: Stored {len(document_ids)} embeddings successfully")
         return document_ids
 
-    def similarity_search(self, query: str, user_id: str, top_k: int = 5, jwt: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def similarity_search(self, query: str, user_id: str, top_k: int = 5, jwt: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Perform similarity search against stored embeddings using centralized auth service.
         
@@ -463,7 +463,7 @@ class Embedder:
             logger.info("🔍 SIMILARITY_SEARCH: STEP 4 - Executing RPC call to match_documents")
             try:
                 logger.info("🔍 SIMILARITY_SEARCH: Calling client.rpc('match_documents', params)")
-                result = client.rpc("match_documents", rpc_params).execute()
+                result = await client.rpc("match_documents", rpc_params).execute()
                 logger.info(f"✅ SIMILARITY_SEARCH: RPC call completed successfully")
                 
                 # Check for errors in result
