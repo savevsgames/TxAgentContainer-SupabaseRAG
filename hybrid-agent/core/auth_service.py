@@ -19,7 +19,7 @@ from fastapi import HTTPException, Header, Request
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from datetime import datetime
-from supabase import create_client
+from supabase import create_client, Client
 
 from .logging import request_logger
 from .exceptions import StorageError
@@ -221,28 +221,28 @@ class AuthService:
             raise HTTPException(status_code=500, detail=f"Authentication error: {str(e)}")
     
 
-    def get_authenticated_client(self, jwt_token: Optional[str] = None) -> AsyncClient:
+    def get_authenticated_client(self, jwt_token: Optional[str] = None) -> Client:
         """
-        Get an async Supabase client with JWT token injected.
+        Get a Supabase client with JWT token injected.
         """
-        logger.info(f"🔍 GET_CLIENT: Creating Supabase async client with JWT: {bool(jwt_token)}")
+        logger.info(f"🔍 GET_CLIENT: Creating Supabase client with JWT: {bool(jwt_token)}")
 
         try:
-            client = create_client(SUPABASE_URL, jwt_token or SUPABASE_ANON_KEY)
+            client: Client = create_client(SUPABASE_URL, jwt_token or SUPABASE_ANON_KEY)
             
-            # Set required headers
-            client.session.headers.update({
+            # Headers are set internally by supabase-py, but this is safe if needed
+            client.postgrest.session.headers.update({
                 "Authorization": f"Bearer {jwt_token if jwt_token else SUPABASE_ANON_KEY}",
-                "apikey": SUPABASE_ANON_KEY  # REQUIRED
+                "apikey": SUPABASE_ANON_KEY
             })
-            
-            logger.info(f"✅ GET_CLIENT: {'Authenticated' if jwt_token else 'Anonymous'} async client created")
+
+            logger.info(f"✅ GET_CLIENT: {'Authenticated' if jwt_token else 'Anonymous'} client created")
             return client
 
         except Exception as e:
-            logger.error(f"❌ GET_CLIENT: Error creating async client: {str(e)}")
-            raise StorageError(f"Failed to create Supabase async client: {str(e)}")
-
+            logger.error(f"❌ GET_CLIENT: Error creating client: {str(e)}")
+            raise StorageError(f"Failed to create Supabase client: {str(e)}")
+        
         
     async def get_user_from_request(self, request: Request) -> str:
         """
