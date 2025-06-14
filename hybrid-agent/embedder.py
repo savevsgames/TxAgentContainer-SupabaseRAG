@@ -146,7 +146,7 @@ class Embedder:
             logger.error(f"❌ UPDATE_JOB_STATUS: Exception type: {type(e).__name__}")
             raise
 
-    async def get_job_status(self, job_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+    def get_job_status(self, job_id: str, user_id: str) -> Optional[Dict[str, Any]]:
         """
         Get the current status of an embedding job.
         

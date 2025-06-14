@@ -375,7 +375,7 @@ async def process_document(
 
 @app.get("/embedding-jobs/{job_id}", response_model=JobResponse)
 @log_request("/embedding-jobs")
-async def get_job_status(
+def get_job_status(
     job_id: str,
     user_id: str = Depends(get_user_id)
 ):
@@ -385,7 +385,7 @@ async def get_job_status(
     logger.info(f"🚀 JOB STATUS REQUEST: {job_id} for user {user_id}")
     
     try:
-        job = await embedder.get_job_status(job_id, user_id)
+        job = embedder.get_job_status(job_id, user_id)
         if not job:
             logger.error(f"❌ Job not found: {job_id}")
             raise HTTPException(status_code=404, detail="Job not found")
