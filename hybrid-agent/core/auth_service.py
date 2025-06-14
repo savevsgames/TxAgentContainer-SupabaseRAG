@@ -224,34 +224,25 @@ class AuthService:
     def get_authenticated_client(self, jwt_token: Optional[str] = None) -> PostgrestClient:
         """
         Get a PostgREST client authenticated with a JWT token.
-
-        This client supports Supabase RLS by injecting the JWT via the auth() method.
-
-        Args:
-            jwt_token: Optional JWT token for authenticated operations
-
-        Returns:
-            PostgrestClient instance with proper Authorization header
-
-        Raises:
-            StorageError: If client creation fails
+        This client supports Supabase RLS by injecting the JWT and API key.
         """
         logger.info(f"🔍 GET_CLIENT: Creating Supabase client with JWT: {bool(jwt_token)}")
 
         try:
-            # Initialize PostgREST client with base URL
             client = PostgrestClient(f"{SUPABASE_URL}/rest/v1")
 
-            # Use .auth() method instead of manipulating headers directly
-            client.auth(jwt_token if jwt_token else SUPABASE_ANON_KEY)
-            logger.info(f"✅ GET_CLIENT: {'Authenticated' if jwt_token else 'Anonymous'} client created")
+            # Set required headers
+            client.session.headers.update({
+                "Authorization": f"Bearer {jwt_token if jwt_token else SUPABASE_ANON_KEY}",
+                "apikey": SUPABASE_ANON_KEY  # REQUIRED
+            })
 
+            logger.info(f"✅ GET_CLIENT: {'Authenticated' if jwt_token else 'Anonymous'} client created")
             return client
 
         except Exception as e:
             logger.error(f"❌ GET_CLIENT: Error creating client: {str(e)}")
             raise StorageError(f"Failed to create Supabase client: {str(e)}")
-
 
         
     async def get_user_from_request(self, request: Request) -> str:
