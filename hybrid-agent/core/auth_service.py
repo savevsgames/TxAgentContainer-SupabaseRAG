@@ -222,45 +222,42 @@ class AuthService:
     
     def get_authenticated_client(self, jwt_token: Optional[str] = None) -> Client:
         """
-        Get a Supabase client with proper authentication context.
-        
-        This method creates a Supabase client that respects RLS policies
-        by setting the JWT token in the auth headers.
-        
+        Create a Supabase client configured for RLS-compliant access.
+
+        This method ensures that the returned client includes the appropriate
+        JWT authorization header so that all database and storage operations
+        are performed within the correct user context. This is essential for
+        enforcing Supabase's Row-Level Security (RLS) policies.
+
         Args:
-            jwt_token: Optional JWT token for authenticated operations
-            
+            jwt_token (Optional[str]): The JWT token of the authenticated user.
+                                    If None, an anonymous client is returned.
+
         Returns:
-            Supabase client instance with proper auth context
+            Client: A Supabase client instance that will send the JWT in all
+                    requests for authenticated access to protected tables.
+
+        Raises:
+            StorageError: If the client cannot be created due to misconfiguration
+                        or underlying SDK errors.
         """
         logger.info(f"🔍 GET_CLIENT: Creating Supabase client with JWT: {bool(jwt_token)}")
         
-        if jwt_token:
-            try:
-                # Create client with anon key
-                client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-                
-                # Set JWT token in auth headers for RLS
-                # This is the correct way to establish user context for RLS policies
-                client.auth._headers = {"Authorization": f"Bearer {jwt_token}"}
-                
-                logger.info(f"✅ GET_CLIENT: Created authenticated client")
-                return client
-                
-            except Exception as e:
-                logger.error(f"❌ GET_CLIENT: Error creating authenticated client: {str(e)}")
-                
-                # Fallback to service role if available
-                if self.service_client:
-                    logger.warning(f"⚠️ GET_CLIENT: Using service role client as fallback")
-                    return self.service_client
-                else:
-                    logger.error(f"❌ GET_CLIENT: No fallback available")
-                    raise StorageError(f"Failed to create authenticated client: {str(e)}")
-        else:
-            # Return anon client for non-authenticated operations
-            logger.info(f"✅ GET_CLIENT: Using anonymous client")
-            return self.anon_client
+        try:
+            client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+            if jwt_token:
+                # Inject JWT into the headers using internal _client
+                client._client.headers["Authorization"] = f"Bearer {jwt_token}"
+                logger.info(f"✅ GET_CLIENT: Authenticated client with JWT")
+            else:
+                logger.info(f"✅ GET_CLIENT: Using anonymous client")
+
+            return client
+
+        except Exception as e:
+            logger.error(f"❌ GET_CLIENT: Error creating authenticated client: {str(e)}")
+            raise StorageError(f"Failed to create Supabase client: {str(e)}")
     
     async def get_user_from_request(self, request: Request) -> str:
         """
