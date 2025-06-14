@@ -257,7 +257,7 @@ def test_rpc(authorization: Optional[str] = Header(None)):
     token = auth_service.extract_token_from_header(authorization)
     client = auth_service.get_authenticated_client(token)
     try:
-        result = client.rpc("get_active_agent").execute()
+        result = client.rpc("get_active_agent", {}).execute()
         return {"data": result.data}
     except Exception as e:
         return {"error": str(e)}
@@ -353,7 +353,7 @@ async def process_document(
         
         # Create job record - pass JWT token
         job_id = str(uuid.uuid4())
-        await embedder.create_embedding_job(
+        embedder.create_embedding_job(
             job_id,
             request.file_path,
             user_id,
@@ -586,7 +586,7 @@ def get_active_agent(
         client = auth_service.get_authenticated_client(token)
         
         # Get active agent session
-        result = client.rpc("get_active_agent").execute()
+        result = client.rpc("get_active_agent", {}).execute()
         
         if not result.data:
             return {"agent": None, "message": "No active agent session found"}
