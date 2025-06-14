@@ -38,15 +38,17 @@ CREATE TABLE public.documents (
 ```
 
 **Key Features**:
+
 - **768-dimensional vectors**: Compatible with BioBERT model
 - **User isolation**: RLS policies filter by `user_id`
 - **Metadata storage**: JSON metadata for chunk information
 - **Performance indexes**: IVFFlat index for fast vector search
 
 **Indexes**:
+
 ```sql
 CREATE INDEX documents_user_id_idx ON public.documents(user_id);
-CREATE INDEX documents_embedding_idx ON public.documents 
+CREATE INDEX documents_embedding_idx ON public.documents
   USING ivfflat (embedding vector_cosine_ops) WITH (lists='100');
 ```
 
@@ -69,12 +71,14 @@ CREATE TABLE public.embedding_jobs (
 ```
 
 **Status Values**:
+
 - `pending`: Job created, waiting for processing
 - `processing`: Currently being processed by TxAgent
 - `completed`: Successfully processed and stored
 - `failed`: Processing failed (see error field)
 
 **Indexes**:
+
 ```sql
 CREATE INDEX embedding_jobs_user_id_idx ON public.embedding_jobs(user_id);
 CREATE INDEX embedding_jobs_status_idx ON public.embedding_jobs(status);
@@ -97,12 +101,14 @@ CREATE TABLE public.agents (
 ```
 
 **Status Values**:
+
 - `initializing`: Agent session being created
 - `active`: Agent ready for operations
 - `idle`: Agent inactive but available
 - `terminated`: Agent session ended
 
 **Indexes**:
+
 ```sql
 CREATE INDEX agents_user_id_idx ON public.agents(user_id);
 CREATE INDEX agents_status_idx ON public.agents(status);
@@ -139,6 +145,7 @@ CREATE POLICY "agents_user_isolation" ON public.agents
 ```
 
 **Key Features**:
+
 - **Automatic filtering**: Users only see their own data
 - **Insert protection**: Users can only create records for themselves
 - **Update protection**: Users can only modify their own records
@@ -161,7 +168,7 @@ CREATE OR REPLACE FUNCTION public.match_documents(
   content TEXT,
   metadata JSONB,
   similarity FLOAT
-) 
+)
 LANGUAGE plpgsql
 SECURITY INVOKER
 STABLE
@@ -185,6 +192,7 @@ $$;
 ```
 
 **Key Features**:
+
 - **`SECURITY INVOKER`**: Respects RLS policies automatically
 - **User filtering**: Only returns documents the user can access
 - **Cosine similarity**: Uses `<=>` operator for vector distance
@@ -192,6 +200,7 @@ $$;
 - **Performance optimized**: Uses vector indexes
 
 **Permissions**:
+
 ```sql
 GRANT EXECUTE ON FUNCTION public.match_documents(VECTOR(768), FLOAT, INTEGER) TO authenticated;
 ```
@@ -204,16 +213,17 @@ For RLS policies to work correctly, JWT tokens must have these claims:
 
 ```json
 {
-  "sub": "user-uuid-here",           // REQUIRED: User ID
-  "aud": "authenticated",            // REQUIRED: Audience
-  "role": "authenticated",           // REQUIRED: Role
-  "email": "user@example.com",       // Optional: User email
-  "exp": 1234567890,                 // REQUIRED: Expiration
-  "iat": 1234567890                  // Optional: Issued at
+  "sub": "user-uuid-here", // REQUIRED: User ID
+  "aud": "authenticated", // REQUIRED: Audience
+  "role": "authenticated", // REQUIRED: Role
+  "email": "user@example.com", // Optional: User email
+  "exp": 1234567890, // REQUIRED: Expiration
+  "iat": 1234567890 // Optional: Issued at
 }
 ```
 
 **Critical Requirements**:
+
 - `sub`: Must match `user_id` in database tables
 - `aud`: Must be "authenticated" for RLS policies
 - `role`: Must be "authenticated" for RLS policies
@@ -222,6 +232,7 @@ For RLS policies to work correctly, JWT tokens must have these claims:
 ### Environment Variables
 
 **Required for TxAgent Container**:
+
 ```bash
 # Supabase Configuration
 SUPABASE_URL=https://your-project.supabase.co
@@ -238,7 +249,7 @@ SUPABASE_STORAGE_BUCKET=documents
 - **`documents`**: Stores uploaded files (PDF, DOCX, TXT, MD)
   - **Public access**: No (private bucket)
   - **File size limit**: 50MB per file
-  - **Allowed MIME types**: 
+  - **Allowed MIME types**:
     - `application/pdf`
     - `application/vnd.openxmlformats-officedocument.wordprocessingml.document`
     - `text/plain`
@@ -283,9 +294,9 @@ The application now uses a centralized authentication service (`core/auth_servic
 from core.auth_service import auth_service
 
 # Get authenticated client
-client = await auth_service.get_authenticated_client(jwt_token)
+client = auth_service.get_authenticated_client(jwt_token)
 
-# Perform database operations (RLS automatically applied) - Async means execute routes need awaiting
+# Perform database operations (RLS automatically applied)
 result = client.table("documents").select("*").execute()
 
 # Call vector search function
@@ -299,6 +310,7 @@ search_results = client.rpc("match_documents", {
 ## Data Flow
 
 ### Document Processing Flow
+
 1. **Upload**: User uploads document to Supabase Storage
 2. **Job Creation**: Embedding job created in `embedding_jobs` table
 3. **Processing**: TxAgent downloads file and processes it
@@ -308,6 +320,7 @@ search_results = client.rpc("match_documents", {
 7. **Completion**: Job status updated to "completed"
 
 ### Chat Query Flow
+
 1. **Authentication**: JWT token validated and user context established
 2. **Embedding**: Query converted to BioBERT embedding
 3. **Search**: `match_documents` function performs similarity search
@@ -322,11 +335,12 @@ search_results = client.rpc("match_documents", {
 The IVFFlat index provides fast approximate nearest neighbor search:
 
 ```sql
-CREATE INDEX documents_embedding_idx ON public.documents 
+CREATE INDEX documents_embedding_idx ON public.documents
   USING ivfflat (embedding vector_cosine_ops) WITH (lists='100');
 ```
 
 **Configuration**:
+
 - **Lists**: 100 (good for up to 1M vectors)
 - **Distance**: Cosine distance (`<=>` operator)
 - **Probes**: Default (can be tuned with `SET ivfflat.probes = N`)
@@ -360,11 +374,13 @@ CREATE INDEX documents_embedding_idx ON public.documents
 ### Common Issues
 
 1. **RLS Policy Violations**
+
    - **Cause**: JWT token missing required claims
    - **Solution**: Verify `sub`, `aud`, and `role` claims in JWT
    - **Check**: Ensure `auth.uid()` returns correct user ID
 
 2. **Vector Search Errors**
+
    - **Cause**: Function signature mismatch or missing permissions
    - **Solution**: Use standardized function signature
    - **Check**: Verify `GRANT EXECUTE` permissions

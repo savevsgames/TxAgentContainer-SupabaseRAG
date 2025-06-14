@@ -335,7 +335,7 @@ CREATE TABLE public.agents (
 ```python
 # Centralized authentication
 user_id, payload = auth_service.validate_token_and_get_user(token)
-client = await auth_service.get_authenticated_client(jwt_token)
+client = auth_service.get_authenticated_client(jwt_token)
 
 # Automatic RLS compliance
 client.auth._headers = {"Authorization": f"Bearer {jwt_token}"}

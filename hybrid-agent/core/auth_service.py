@@ -221,14 +221,14 @@ class AuthService:
             raise HTTPException(status_code=500, detail=f"Authentication error: {str(e)}")
     
 
-    async def get_authenticated_client(self, jwt_token: Optional[str] = None) -> AsyncClient:
+    def get_authenticated_client(self, jwt_token: Optional[str] = None) -> AsyncClient:
         """
         Get an async Supabase client with JWT token injected.
         """
         logger.info(f"🔍 GET_CLIENT: Creating Supabase async client with JWT: {bool(jwt_token)}")
 
         try:
-            client = await create_client(SUPABASE_URL, jwt_token or SUPABASE_ANON_KEY)
+            client = create_client(SUPABASE_URL, jwt_token or SUPABASE_ANON_KEY)
             
             # Set required headers
             client.session.headers.update({
