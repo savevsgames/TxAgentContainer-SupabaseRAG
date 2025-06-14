@@ -192,6 +192,8 @@ async def log_requests(request: Request, call_next):
 
 # Background task to process document
 async def process_document_task(job_id: str, file_path: str, metadata: Dict[str, Any], user_id: str, jwt: str):
+    print(f"📦 Background task started for job {job_id}")
+    
     """Background task to process and embed a document."""
     request_logger.log_system_event("background_task_start", {
         "job_id": job_id,
@@ -323,6 +325,9 @@ async def process_document(
     The document must exist in Supabase Storage and be accessible by the user.
     """
     logger.info(f"🚀 PROCESS DOCUMENT REQUEST: {request.file_path}")
+
+    print("✅ Hit process-document route")
+
     
     try:
         # Validate JWT and get user ID using centralized auth service

@@ -73,6 +73,11 @@ class Embedder:
         
         # Use centralized auth service to get authenticated client
         client = auth_service.get_authenticated_client(jwt)
+
+        # 🧠 Inject Authorization header manually to ensure it's passed to PostgREST
+        # Supabase's Python client does not automatically inject the JWT into PostgREST 
+        # headers for insert() unless explicitly told.
+        client.headers = {**client.headers, "Authorization": f"Bearer {jwt}"}
         
         try:
             result = client.table("embedding_jobs").insert({
