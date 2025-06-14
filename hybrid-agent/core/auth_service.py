@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from datetime import datetime
 from supabase import create_client, Client
-from postgrest import SyncClient
+from postgrest import PostgrestClient
 
 from .logging import request_logger
 from .exceptions import StorageError
@@ -221,15 +221,18 @@ class AuthService:
             logger.error(f"❌ VALIDATE_TOKEN: Unexpected error: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Authentication error: {str(e)}")
     
-    def get_authenticated_client(self, jwt_token: Optional[str] = None) -> SyncClient:
+    def get_authenticated_client(self, jwt_token: Optional[str] = None) -> PostgrestClient:
         """
         Get a PostgREST client authenticated with a JWT token.
+
+        This client is configured to respect Supabase RLS (Row-Level Security)
+        policies by injecting the JWT token into the Authorization header.
 
         Args:
             jwt_token: Optional JWT token for authenticated operations
 
         Returns:
-            postgrest.SyncClient instance with proper Authorization header
+            postgrest.PostgrestClient instance with proper Authorization header
 
         Raises:
             StorageError: If client creation fails
@@ -237,18 +240,20 @@ class AuthService:
         logger.info(f"🔍 GET_CLIENT: Creating Supabase client with JWT: {bool(jwt_token)}")
 
         try:
-            client = SyncClient(f"{SUPABASE_URL}/rest/v1")
-            if jwt_token:
-                client.auth(jwt_token)
-                logger.info(f"✅ GET_CLIENT: Authenticated client created")
-            else:
-                client.auth(SUPABASE_ANON_KEY)
-                logger.info(f"✅ GET_CLIENT: Anonymous client created")
+            # Create low-level PostgREST client
+            client = PostgrestClient(f"{SUPABASE_URL}/rest/v1")
+
+            # Inject Authorization header to support RLS policies
+            client.headers["Authorization"] = f"Bearer {jwt_token or SUPABASE_ANON_KEY}"
+            logger.info(f"✅ GET_CLIENT: {'Authenticated' if jwt_token else 'Anonymous'} client created")
+
             return client
+
         except Exception as e:
             logger.error(f"❌ GET_CLIENT: Error creating client: {str(e)}")
             raise StorageError(f"Failed to create Supabase client: {str(e)}")
-    
+
+        
     async def get_user_from_request(self, request: Request) -> str:
         """
         Extract and validate user ID from FastAPI request.
