@@ -286,10 +286,10 @@ from core.auth_service import auth_service
 client = await auth_service.get_authenticated_client(jwt_token)
 
 # Perform database operations (RLS automatically applied) - Async means execute routes need awaiting
-result = await client.table("documents").select("*").execute()
+result = client.table("documents").select("*").execute()
 
 # Call vector search function
-search_results = await client.rpc("match_documents", {
+search_results = client.rpc("match_documents", {
     "query_embedding": embedding,
     "match_threshold": 0.5,
     "match_count": 5

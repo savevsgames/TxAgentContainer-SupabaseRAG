@@ -74,7 +74,7 @@ class Embedder:
         client = await auth_service.get_authenticated_client(jwt)
 
         try:
-            result = await client.from_("embedding_jobs").insert({
+            result = client.from_("embedding_jobs").insert({
                 "id": job_id,
                 "file_path": file_path,
                 "status": "pending",
@@ -133,7 +133,7 @@ class Embedder:
             if error:
                 update_data["error"] = error
                 
-            result = await client.table("embedding_jobs").update(
+            result = client.table("embedding_jobs").update(
                 update_data
             ).eq("id", job_id).execute()
             
@@ -159,7 +159,7 @@ class Embedder:
         client = await auth_service.get_authenticated_client()
         
         try:
-            result = await client.table("embedding_jobs").select("*").eq("id", job_id).eq("user_id", user_id).execute()
+            result = client.table("embedding_jobs").select("*").eq("id", job_id).eq("user_id", user_id).execute()
             
             if result.data:
                 job = result.data[0]
@@ -385,7 +385,7 @@ class Embedder:
                 logger.info(f"🔍 STORE_EMBEDDINGS: Storing chunk {i+1}/{len(document_chunks)}")
                 
                 # Insert document with embedding
-                result = await client.table("documents").insert({
+                result = client.table("documents").insert({
                     "content": chunk["content"],
                     "embedding": chunk["embedding"],
                     "metadata": chunk["metadata"],
@@ -461,7 +461,7 @@ class Embedder:
             logger.info("🔍 SIMILARITY_SEARCH: STEP 4 - Executing RPC call to match_documents")
             try:
                 logger.info("🔍 SIMILARITY_SEARCH: Calling await client.rpc('match_documents', params)")
-                result = await client.rpc("match_documents", rpc_params).execute()
+                result = client.rpc("match_documents", rpc_params).execute()
                 logger.info(f"✅ SIMILARITY_SEARCH: RPC call completed successfully")
                 
                 # Check for errors in result

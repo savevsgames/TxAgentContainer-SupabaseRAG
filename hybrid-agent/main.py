@@ -257,7 +257,7 @@ async def test_rpc(authorization: Optional[str] = Header(None)):
     token = auth_service.extract_token_from_header(authorization)
     client = await auth_service.get_authenticated_client(token)
     try:
-        result = await client.rpc("get_active_agent").execute()
+        result = client.rpc("get_active_agent").execute()
         return {"data": result.data}
     except Exception as e:
         return {"error": str(e)}
@@ -535,7 +535,7 @@ async def create_agent_session(
         client = await auth_service.get_authenticated_client(token)
         
         # Create agent session using the database function
-        result = await client.rpc("create_agent_session", {
+        result = client.rpc("create_agent_session", {
             "session_data": request.session_data
         }).execute()
         
@@ -586,7 +586,7 @@ async def get_active_agent(
         client = await auth_service.get_authenticated_client(token)
         
         # Get active agent session
-        result = await client.rpc("get_active_agent").execute()
+        result = client.rpc("get_active_agent").execute()
         
         if not result.data:
             return {"agent": None, "message": "No active agent session found"}
@@ -633,7 +633,7 @@ async def terminate_agent_session(
         client = await auth_service.get_authenticated_client(token)
         
         # Terminate agent session
-        result = await client.rpc("terminate_agent_session", {
+        result = client.rpc("terminate_agent_session", {
             "agent_id": agent_id
         }).execute()
         

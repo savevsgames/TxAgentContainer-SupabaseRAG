@@ -19,7 +19,7 @@ from fastapi import HTTPException, Header, Request
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from datetime import datetime
-from supabase.client import AsyncClient, create_client
+from supabase import create_client
 
 from .logging import request_logger
 from .exceptions import StorageError
