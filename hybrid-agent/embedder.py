@@ -89,8 +89,6 @@ class Embedder:
             logger.error(f"❌ CREATE_EMBEDDING_JOB: Exception type: {type(e).__name__}")
             raise
 
-
-
     async def update_job_status(
         self,
         job_id: str,

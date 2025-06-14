@@ -252,6 +252,16 @@ async def process_document_task(job_id: str, file_path: str, metadata: Dict[str,
         }, level="error")
 
 # API Endpoints
+@app.get("/test-rpc")
+async def test_rpc(authorization: Optional[str] = Header(None)):
+    token = auth_service.extract_token_from_header(authorization)
+    client = auth_service.get_authenticated_client(token)
+    try:
+        result = await client.rpc("get_active_agent").execute()
+        return {"data": result.data}
+    except Exception as e:
+        return {"error": str(e)}
+
 
 @app.post("/embed", response_model=EmbedResponse)
 @log_request("/embed")
@@ -525,7 +535,7 @@ async def create_agent_session(
         client = auth_service.get_authenticated_client(token)
         
         # Create agent session using the database function
-        result = client.rpc("create_agent_session", {
+        result = await client.rpc("create_agent_session", {
             "session_data": request.session_data
         }).execute()
         
@@ -576,7 +586,7 @@ async def get_active_agent(
         client = auth_service.get_authenticated_client(token)
         
         # Get active agent session
-        result = client.rpc("get_active_agent").execute()
+        result = await client.rpc("get_active_agent").execute()
         
         if not result.data:
             return {"agent": None, "message": "No active agent session found"}
@@ -623,7 +633,7 @@ async def terminate_agent_session(
         client = auth_service.get_authenticated_client(token)
         
         # Terminate agent session
-        result = client.rpc("terminate_agent_session", {
+        result = await client.rpc("terminate_agent_session", {
             "agent_id": agent_id
         }).execute()
         
