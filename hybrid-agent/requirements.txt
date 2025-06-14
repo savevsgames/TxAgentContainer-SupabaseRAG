@@ -17,3 +17,4 @@ nltk>=3.8.1
 tenacity>=8.2.2
 openai>=1.12.0
 psutil>=5.9.0
+postgrest==0.10.6

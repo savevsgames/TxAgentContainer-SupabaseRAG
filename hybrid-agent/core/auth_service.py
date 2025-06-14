@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from datetime import datetime
 from supabase import create_client, Client
+from postgrest import SyncClient
 
 from .logging import request_logger
 from .exceptions import StorageError
@@ -220,43 +221,32 @@ class AuthService:
             logger.error(f"❌ VALIDATE_TOKEN: Unexpected error: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Authentication error: {str(e)}")
     
-    def get_authenticated_client(self, jwt_token: Optional[str] = None) -> Client:
+    def get_authenticated_client(self, jwt_token: Optional[str] = None) -> SyncClient:
         """
-        Create a Supabase client configured for RLS-compliant access.
-
-        This method ensures that the returned client includes the appropriate
-        JWT authorization header so that all database and storage operations
-        are performed within the correct user context. This is essential for
-        enforcing Supabase's Row-Level Security (RLS) policies.
+        Get a PostgREST client authenticated with a JWT token.
 
         Args:
-            jwt_token (Optional[str]): The JWT token of the authenticated user.
-                                    If None, an anonymous client is returned.
+            jwt_token: Optional JWT token for authenticated operations
 
         Returns:
-            Client: A Supabase client instance that will send the JWT in all
-                    requests for authenticated access to protected tables.
+            postgrest.SyncClient instance with proper Authorization header
 
         Raises:
-            StorageError: If the client cannot be created due to misconfiguration
-                        or underlying SDK errors.
+            StorageError: If client creation fails
         """
         logger.info(f"🔍 GET_CLIENT: Creating Supabase client with JWT: {bool(jwt_token)}")
-        
+
         try:
-            client = create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
-
+            client = SyncClient(f"{SUPABASE_URL}/rest/v1")
             if jwt_token:
-                # Inject JWT into the headers using internal _client
-                client._client.headers["Authorization"] = f"Bearer {jwt_token}"
-                logger.info(f"✅ GET_CLIENT: Authenticated client with JWT")
+                client.auth(jwt_token)
+                logger.info(f"✅ GET_CLIENT: Authenticated client created")
             else:
-                logger.info(f"✅ GET_CLIENT: Using anonymous client")
-
+                client.auth(SUPABASE_ANON_KEY)
+                logger.info(f"✅ GET_CLIENT: Anonymous client created")
             return client
-
         except Exception as e:
-            logger.error(f"❌ GET_CLIENT: Error creating authenticated client: {str(e)}")
+            logger.error(f"❌ GET_CLIENT: Error creating client: {str(e)}")
             raise StorageError(f"Failed to create Supabase client: {str(e)}")
     
     async def get_user_from_request(self, request: Request) -> str:
