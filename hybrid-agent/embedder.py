@@ -71,16 +71,11 @@ class Embedder:
         logger.info(f"🔍 CREATE_EMBEDDING_JOB: Starting for user {user_id}")
         logger.info(f"🔍 CREATE_EMBEDDING_JOB: JWT provided: {bool(jwt)}")
         
-        # Use centralized auth service to get authenticated client
+        # Use centralized auth service to get authenticated PostgREST client
         client = auth_service.get_authenticated_client(jwt)
 
-        # 🧠 Inject Authorization header manually to ensure it's passed to PostgREST
-        # Supabase's Python client does not automatically inject the JWT into PostgREST 
-        # headers for insert() unless explicitly told.
-        client.headers = {**client.headers, "Authorization": f"Bearer {jwt}"}
-        
         try:
-            result = client.table("embedding_jobs").insert({
+            result = client.from_("embedding_jobs").insert({
                 "id": job_id,
                 "file_path": file_path,
                 "status": "pending",
@@ -88,11 +83,12 @@ class Embedder:
             }).execute()
             
             logger.info(f"✅ CREATE_EMBEDDING_JOB: Successfully created job {job_id}")
-            return result.data[0] if result.data else None
+            return result[1][0] if result[1] else None  # (count, rows) tuple in postgrest-py
         except Exception as e:
             logger.error(f"❌ CREATE_EMBEDDING_JOB: Error creating embedding job: {str(e)}")
             logger.error(f"❌ CREATE_EMBEDDING_JOB: Exception type: {type(e).__name__}")
             raise
+
 
     async def update_job_status(
         self,
