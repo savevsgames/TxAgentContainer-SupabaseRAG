@@ -71,7 +71,7 @@ class Embedder:
         logger.info(f"🔍 CREATE_EMBEDDING_JOB: Starting for user {user_id}")
         logger.info(f"🔍 CREATE_EMBEDDING_JOB: JWT provided: {bool(jwt)}")
 
-        client = auth_service.get_authenticated_client(jwt)
+        client = await auth_service.get_authenticated_client(jwt)
 
         try:
             result = await client.from_("embedding_jobs").insert({
@@ -116,7 +116,7 @@ class Embedder:
         logger.info(f"🔍 UPDATE_JOB_STATUS: JWT provided: {bool(jwt)}")
         
         # Use centralized auth service to get authenticated client
-        client = auth_service.get_authenticated_client(jwt)
+        client = await auth_service.get_authenticated_client(jwt)
         
         try:
             update_data = {
@@ -133,7 +133,7 @@ class Embedder:
             if error:
                 update_data["error"] = error
                 
-            result = client.table("embedding_jobs").update(
+            result = await client.table("embedding_jobs").update(
                 update_data
             ).eq("id", job_id).execute()
             
@@ -144,7 +144,7 @@ class Embedder:
             logger.error(f"❌ UPDATE_JOB_STATUS: Exception type: {type(e).__name__}")
             raise
 
-    def get_job_status(self, job_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+    async def get_job_status(self, job_id: str, user_id: str) -> Optional[Dict[str, Any]]:
         """
         Get the current status of an embedding job.
         
@@ -156,10 +156,10 @@ class Embedder:
             Job record if found, None otherwise
         """
         # Use anon client for read operations (RLS will filter by user)
-        client = auth_service.get_authenticated_client()
+        client = await auth_service.get_authenticated_client()
         
         try:
-            result = client.table("embedding_jobs").select("*").eq("id", job_id).eq("user_id", user_id).execute()
+            result = await client.table("embedding_jobs").select("*").eq("id", job_id).eq("user_id", user_id).execute()
             
             if result.data:
                 job = result.data[0]
@@ -174,7 +174,7 @@ class Embedder:
             raise
 
     @with_retry(retries=3, delay=1.0, backoff=2.0, exceptions=(Exception,))
-    def _download_file(self, file_path: str, jwt: Optional[str] = None) -> bytes:
+    async def _download_file(self, file_path: str, jwt: Optional[str] = None) -> bytes:
         """
         Download a file from Supabase Storage using centralized auth service.
         
@@ -188,7 +188,7 @@ class Embedder:
         logger.info(f"Downloading file: {file_path}")
         
         # Use centralized auth service to get authenticated client
-        client = auth_service.get_authenticated_client(jwt)
+        client = await auth_service.get_authenticated_client(jwt)
         
         try:
             response = client.storage.from_(storage_bucket).download(file_path)
@@ -360,7 +360,7 @@ class Embedder:
             logger.error(f"Error processing document: {str(e)}")
             raise
 
-    def store_embeddings(self, document_chunks: List[Dict[str, Any]], user_id: str, jwt: Optional[str] = None) -> List[str]:
+    async def store_embeddings(self, document_chunks: List[Dict[str, Any]], user_id: str, jwt: Optional[str] = None) -> List[str]:
         """
         Store document chunks and embeddings in Supabase using centralized auth service.
         
@@ -376,7 +376,7 @@ class Embedder:
         logger.info(f"🔍 STORE_EMBEDDINGS: JWT provided: {bool(jwt)}")
         
         # Use centralized auth service to get authenticated client
-        client = auth_service.get_authenticated_client(jwt)
+        client = await auth_service.get_authenticated_client(jwt)
         
         document_ids = []
         
@@ -385,7 +385,7 @@ class Embedder:
                 logger.info(f"🔍 STORE_EMBEDDINGS: Storing chunk {i+1}/{len(document_chunks)}")
                 
                 # Insert document with embedding
-                result = client.table("documents").insert({
+                result = await client.table("documents").insert({
                     "content": chunk["content"],
                     "embedding": chunk["embedding"],
                     "metadata": chunk["metadata"],
@@ -440,7 +440,7 @@ class Embedder:
             # STEP 2: Get Supabase client with JWT token using centralized auth service
             logger.info("🔍 SIMILARITY_SEARCH: STEP 2 - Getting authenticated Supabase client")
             try:
-                client = auth_service.get_authenticated_client(jwt)
+                client = await auth_service.get_authenticated_client(jwt)
                 logger.info(f"✅ SIMILARITY_SEARCH: Supabase client obtained")
             except Exception as e:
                 logger.error(f"❌ SIMILARITY_SEARCH: STEP 2 FAILED - Error getting Supabase client: {str(e)}")
@@ -460,7 +460,7 @@ class Embedder:
             # STEP 4: Execute RPC call to the standardized match_documents function
             logger.info("🔍 SIMILARITY_SEARCH: STEP 4 - Executing RPC call to match_documents")
             try:
-                logger.info("🔍 SIMILARITY_SEARCH: Calling client.rpc('match_documents', params)")
+                logger.info("🔍 SIMILARITY_SEARCH: Calling await client.rpc('match_documents', params)")
                 result = await client.rpc("match_documents", rpc_params).execute()
                 logger.info(f"✅ SIMILARITY_SEARCH: RPC call completed successfully")
                 
