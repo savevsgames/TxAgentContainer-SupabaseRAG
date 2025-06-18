@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 import uuid
 import time
 import psutil
+import torch
 
 from embedder import Embedder
 from llm import LLMHandler
