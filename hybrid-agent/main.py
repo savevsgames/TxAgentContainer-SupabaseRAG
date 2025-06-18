@@ -673,15 +673,20 @@ async def test_post(data: Dict[str, Any] = None):
     return {"message": "POST endpoint working", "received_data": data, "timestamp": time.time()}
 
 @app.get("/health")
-async def health_check():
+async def health_check(
+    request: Request,
+    x_session_id: Optional[str] = Header(None, alias="X-Session-ID"),
+    authorization: Optional[str] = Header(None)
+):
     """
     Check if the service is healthy.
     
     Returns detailed health information including uptime, memory usage,
     and model status for monitoring and debugging.
+    
+    Optionally updates agent session status if X-Session-ID header is provided.
     """
     logger.info("🚀 HEALTH CHECK REQUEST")
-    request_logger.log_system_event("health_check", {"status": "healthy"})
     
     # Calculate uptime
     uptime_seconds = int(time.time() - startup_time)
@@ -694,24 +699,79 @@ async def health_check():
     except:
         memory_usage = "Unknown"
     
-    return {
+    # Build health response
+    health_data = {
         "status": "healthy",
         "model": os.getenv("MODEL_NAME", "dmis-lab/biobert-v1.1"),
         "device": os.getenv("DEVICE", "cuda"),
         "version": "1.0.0",
         "uptime": uptime_seconds,
-        "memory_usage": memory_usage
+        "memory_usage": memory_usage,
+        "endpoints": [
+            "/health",
+            "/embed", 
+            "/process-document",
+            "/embedding-jobs/{id}",
+            "/chat"
+        ],
+        "capabilities": {
+            "document_processing": True,
+            "text_embedding": True,
+            "rag_chat": True,
+            "vector_storage": True,
+            "gpu_available": torch.cuda.is_available()
+        }
     }
-
-if __name__ == "__main__":
-    host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "8000"))
-    debug = os.getenv("DEBUG", "False").lower() == "true"
     
-    request_logger.log_system_event("server_start", {
-        "host": host,
-        "port": port,
-        "debug": debug
+    # Update agent session status if session ID is provided
+    if x_session_id:
+        logger.info(f"🔍 HEALTH CHECK: Updating session status for {x_session_id}")
+        try:
+            # Try to get authenticated client if JWT is provided
+            client = None
+            if authorization:
+                try:
+                    token = auth_service.extract_token_from_header(authorization)
+                    user_id, _ = auth_service.validate_token_and_get_user(token)
+                    client = auth_service.get_authenticated_client(token)
+                    logger.info(f"✅ HEALTH CHECK: Using authenticated client for user {user_id}")
+                except Exception as e:
+                    logger.warning(f"⚠️ HEALTH CHECK: JWT validation failed, using service client: {str(e)}")
+            
+            # Fall back to service role client if no valid JWT
+            if not client:
+                client = auth_service.get_authenticated_client()  # Service role
+                logger.info("🔍 HEALTH CHECK: Using service role client")
+            
+            # Update session record
+            update_data = {
+                "connection_status": "connected",
+                "endpoints": health_data["endpoints"],
+                "capabilities": health_data["capabilities"],
+                "last_health_check": "now()",
+                "container_status": "running"
+            }
+            
+            result = client.table("agent_sessions").update(update_data).eq("id", x_session_id).execute()
+            
+            if result.data:
+                logger.info(f"✅ HEALTH CHECK: Successfully updated session {x_session_id}")
+                health_data["session_updated"] = True
+            else:
+                logger.warning(f"⚠️ HEALTH CHECK: No session found with ID {x_session_id}")
+                health_data["session_updated"] = False
+                
+        except Exception as e:
+            logger.error(f"❌ HEALTH CHECK: Error updating session {x_session_id}: {str(e)}")
+            health_data["session_update_error"] = str(e)
+    else:
+        logger.info("🔍 HEALTH CHECK: No session ID provided, skipping session update")
+    
+    request_logger.log_system_event("health_check", {
+        "status": "healthy",
+        "session_id": x_session_id,
+        "session_updated": health_data.get("session_updated", False)
     })
     
-    uvicorn.run("main:app", host=host, port=port, reload=debug)
+    return health_data
+```
