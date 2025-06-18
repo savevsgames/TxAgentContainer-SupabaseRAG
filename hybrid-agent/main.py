@@ -387,15 +387,20 @@ async def process_document(
 @log_request("/embedding-jobs")
 def get_job_status(
     job_id: str,
-    user_id: str = Depends(get_user_id)
+    authorization: Optional[str] = Header(None)  # Add this line
 ):
     """
     Get the status of an embedding job.
     """
-    logger.info(f"🚀 JOB STATUS REQUEST: {job_id} for user {user_id}")
-    
     try:
-        job = embedder.get_job_status(job_id, user_id)
+        # Extract JWT and user_id using centralized auth service
+        token = auth_service.extract_token_from_header(authorization)
+        user_id, user_payload = auth_service.validate_token_and_get_user(token)
+        
+        logger.info(f"🚀 JOB STATUS REQUEST: {job_id} for user {user_id}")
+        
+        # Pass JWT token to embedder
+        job = embedder.get_job_status(job_id, user_id, jwt=token)
         if not job:
             logger.error(f"❌ Job not found: {job_id}")
             raise HTTPException(status_code=404, detail="Job not found")

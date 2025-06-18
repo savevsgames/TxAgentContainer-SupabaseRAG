@@ -144,33 +144,47 @@ class Embedder:
             logger.error(f"❌ UPDATE_JOB_STATUS: Exception type: {type(e).__name__}")
             raise
 
-    def get_job_status(self, job_id: str, user_id: str) -> Optional[Dict[str, Any]]:
+    def get_job_status(self, job_id: str, user_id: str, jwt: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """
         Get the current status of an embedding job.
         
         Args:
             job_id: Job identifier
             user_id: User ID for RLS check
+            jwt: JWT token for authenticated operations
             
         Returns:
             Job record if found, None otherwise
         """
-        # Use anon client for read operations (RLS will filter by user)
-        client = auth_service.get_authenticated_client()
+        logger.info(f"🔍 GET_JOB_STATUS: Looking for job {job_id} for user {user_id}")
+        logger.info(f"🔍 GET_JOB_STATUS: JWT provided: {bool(jwt)}")
+        
+        # 🔥 CRITICAL FIX: Use authenticated client with JWT
+        client = auth_service.get_authenticated_client(jwt)
         
         try:
-            result = client.table("embedding_jobs").select("*").eq("id", job_id).eq("user_id", user_id).execute()
+            result = client.table("embedding_jobs").select("*").eq("id", job_id).execute()
             
             if result.data:
                 job = result.data[0]
+                logger.info(f"✅ GET_JOB_STATUS: Found job {job_id} with status: {job.get('status')}")
+                
                 # Extract document IDs from metadata if present
                 if job.get("metadata"):
-                    metadata = json.loads(job["metadata"])
-                    job["document_ids"] = metadata.get("document_ids", [])
+                    try:
+                        metadata = json.loads(job["metadata"])
+                        job["document_ids"] = metadata.get("document_ids", [])
+                    except json.JSONDecodeError:
+                        job["document_ids"] = []
+                else:
+                    job["document_ids"] = []
                 return job
+            
+            logger.warning(f"⚠️ GET_JOB_STATUS: No job found with ID {job_id}")
             return None
+            
         except Exception as e:
-            logger.error(f"Error getting job status: {str(e)}")
+            logger.error(f"❌ GET_JOB_STATUS: Error getting job status: {str(e)}")
             raise
 
     @with_retry(retries=3, delay=1.0, backoff=2.0, exceptions=(Exception,))
