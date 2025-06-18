@@ -774,4 +774,3 @@ async def health_check(
     })
     
     return health_data
-```
