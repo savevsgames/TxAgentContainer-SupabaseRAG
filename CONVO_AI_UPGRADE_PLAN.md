@@ -30,36 +30,202 @@ This document outlines a comprehensive plan to enhance the Symptom Savior applic
 5. **Medical Safety**: Real-time emergency detection with immediate escalation
 6. **Personalized Responses**: Leverages user's medical profile throughout conversation
 
+## ElevenLabs Conversational AI Capabilities
+
+Based on research, ElevenLabs Conversational AI provides several key capabilities that will enable our real-time conversation goals:
+
+### Context Injection Mechanisms
+1. **WebSocket Contextual Updates**: The WebSocket API supports non-interrupting contextual updates via a specialized event type:
+   ```json
+   {
+     "type": "contextual_update",
+     "text": "<RAG-generated medical context here>"
+   }
+   ```
+   This allows pushing TxAgent-retrieved medical information during an active conversation without interrupting the flow.
+
+2. **HTTP API Dynamic Variables**: For REST-based interactions, the "simulate conversation" endpoints accept a `dynamic_variables` parameter:
+   ```json
+   {
+     "role": "user",
+     "content": "I've been dizzy lately.",
+     "dynamic_variables": {
+       "last_lab_results": "HbA1c: 7.2% (2024-06-01)",
+       "medications": ["metformin", "lisinopril"]
+     }
+   }
+   ```
+   This enables injecting structured medical data into the conversation context.
+
+3. **Custom LLM Integration**: When using a custom LLM, ElevenLabs forwards messages in the standard OpenAI Chat API format, allowing us to prepend RAG context in system messages or append to the messages array.
+
+These capabilities will be leveraged in our implementation to create a seamless integration between ElevenLabs' conversational abilities and TxAgent's medical knowledge.
+
 ## Implementation Strategy
 
 ### Phase 1: Enhanced Audio Foundation (Week 1-2)
 
 #### 1.1 Fix Current Audio Issues ✅ COMPLETED
-- ✅ Fixed MediaRecorder format to use `audio/webm`
+- ✅ Fixed MediaRecorder format to use `audio/webm` with MIME type detection
 - ✅ TTS playback working with proper audio element handling
 - ✅ User-authenticated Supabase storage upload working
 
-#### 1.2 Streaming Audio Infrastructure
+#### 1.2 WebSocket Conversation Infrastructure
 ```typescript
 // New WebSocket endpoint for real-time conversation
-POST /api/conversation/start
-WebSocket /api/conversation/stream
+interface ConversationStartRequest {
+  user_id: string;
+  medical_profile: UserMedicalProfile;
+  initial_context?: string;
+  voice_settings?: {
+    voice_id: string;
+    model_id: string;
+  };
+}
 
-// Enhanced audio capture with VAD
-interface AudioStreamConfig {
-  format: 'audio/webm',
-  sampleRate: 16000,
-  channels: 1,
-  chunkDuration: 200, // ms
-  vadThreshold: 0.5,
-  silenceTimeout: 1500 // ms before processing
+// WebSocket message types
+enum WebSocketMessageType {
+  AUDIO_CHUNK = 'audio_chunk',
+  TRANSCRIPT_PARTIAL = 'transcript_partial',
+  TRANSCRIPT_FINAL = 'transcript_final',
+  AI_THINKING = 'ai_thinking',
+  AI_SPEAKING = 'ai_speaking',
+  AI_RESPONSE_COMPLETE = 'ai_response_complete',
+  CONTEXTUAL_UPDATE = 'contextual_update',
+  EMERGENCY_DETECTED = 'emergency_detected',
+  CONVERSATION_END = 'conversation_end'
+}
+
+// WebSocket connection setup
+class ConversationWebSocketService {
+  private ws: WebSocket | null = null;
+  private sessionId: string | null = null;
+  private reconnectAttempts = 0;
+  
+  async startConversation(profile: UserMedicalProfile): Promise<string> {
+    // Initialize conversation session via REST
+    const response = await fetch(`${Config.ai.backendUserPortal}/api/conversation/start`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`
+      },
+      body: JSON.stringify({
+        medical_profile: profile,
+        initial_context: this.buildInitialContext(profile)
+      })
+    });
+    
+    const { session_id, websocket_url } = await response.json();
+    this.sessionId = session_id;
+    
+    // Connect to WebSocket
+    this.connectWebSocket(websocket_url);
+    
+    return session_id;
+  }
+  
+  private connectWebSocket(url: string): void {
+    this.ws = new WebSocket(url);
+    
+    this.ws.onopen = () => {
+      this.reconnectAttempts = 0;
+      this.onConnectionEstablished();
+    };
+    
+    this.ws.onmessage = (event) => {
+      this.handleWebSocketMessage(JSON.parse(event.data));
+    };
+    
+    this.ws.onerror = (error) => {
+      logger.error('WebSocket error', { error });
+    };
+    
+    this.ws.onclose = () => {
+      this.handleDisconnection();
+    };
+  }
+  
+  // Other methods for sending audio chunks, handling messages, etc.
 }
 ```
 
 #### 1.3 Voice Activity Detection (VAD)
-- **Client-Side VAD**: Use WebRTC VAD for low latency
-- **Fallback Server VAD**: For browsers without WebRTC support
-- **Adaptive Thresholds**: Adjust based on ambient noise
+- **Client-Side VAD**: Implement using WebRTC VAD or a lightweight JavaScript VAD library
+- **Adaptive Thresholds**: Adjust based on ambient noise levels
+- **Silence Detection**: Automatically detect end of user speech
+
+```typescript
+class VoiceActivityDetector {
+  private vadProcessor: any;
+  private isSpeaking = false;
+  private silenceStart: number | null = null;
+  private silenceThreshold = 1500; // ms
+  
+  async initialize(stream: MediaStream): Promise<void> {
+    // Initialize VAD with audio stream
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioContext.createMediaStreamSource(stream);
+    
+    // Create analyzer node
+    const analyzer = audioContext.createAnalyser();
+    analyzer.fftSize = 256;
+    source.connect(analyzer);
+    
+    // Set up processing
+    this.startVadProcessing(analyzer);
+  }
+  
+  private startVadProcessing(analyzer: AnalyserNode): void {
+    const bufferLength = analyzer.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    
+    const checkVoiceActivity = () => {
+      analyzer.getByteFrequencyData(dataArray);
+      
+      // Calculate average volume
+      const average = dataArray.reduce((sum, value) => sum + value, 0) / bufferLength;
+      
+      // Determine if speaking based on threshold
+      const isSpeakingNow = average > this.vadThreshold;
+      
+      if (isSpeakingNow !== this.isSpeaking) {
+        if (isSpeakingNow) {
+          // Transition from silence to speech
+          this.silenceStart = null;
+          this.onSpeechStart();
+        } else {
+          // Transition from speech to silence
+          this.silenceStart = Date.now();
+        }
+        this.isSpeaking = isSpeakingNow;
+      }
+      
+      // Check if silence has lasted long enough to consider speech ended
+      if (!isSpeakingNow && this.silenceStart && 
+          (Date.now() - this.silenceStart > this.silenceThreshold)) {
+        this.onSpeechEnd();
+        this.silenceStart = null;
+      }
+      
+      // Continue processing
+      requestAnimationFrame(checkVoiceActivity);
+    };
+    
+    // Start processing
+    checkVoiceActivity();
+  }
+  
+  // Event handlers
+  private onSpeechStart(): void {
+    // Notify that user started speaking
+  }
+  
+  private onSpeechEnd(): void {
+    // Notify that user stopped speaking
+  }
+}
+```
 
 ### Phase 2: ElevenLabs Conversational AI Integration (Week 3-4)
 
@@ -85,25 +251,113 @@ class ElevenLabsConversationService {
     // Stream audio directly to ElevenLabs
     return await this.sendAudioChunk(sessionId, audioChunk);
   }
+  
+  async injectContext(sessionId, context) {
+    // Use the contextual_update event type to inject medical context
+    // without interrupting the conversation flow
+    const contextualUpdate = {
+      type: 'contextual_update',
+      text: context
+    };
+    
+    // Send via WebSocket
+    this.sendWebSocketMessage(sessionId, contextualUpdate);
+  }
+  
+  async updateDynamicVariables(sessionId, variables) {
+    // For REST API calls, update dynamic variables
+    return await fetch(`${this.apiUrl}/v1/conversations/${sessionId}/variables`, {
+      method: 'PATCH',
+      headers: this.getHeaders(),
+      body: JSON.stringify({ dynamic_variables: variables })
+    });
+  }
 }
 ```
 
 #### 2.2 TxAgent Knowledge Integration
 ```javascript
 // Hybrid approach: ElevenLabs for conversation + TxAgent for medical knowledge
-class HybridMedicalConversation {
-  async enhanceWithMedicalKnowledge(query, userContext) {
-    // Get relevant medical documents from TxAgent
-    const medicalContext = await this.txAgentService.searchMedicalKnowledge(
-      query, 
-      userContext.medical_profile
-    );
+class HybridConversationOrchestrator {
+  constructor(elevenLabsService, txAgentService) {
+    this.elevenLabs = elevenLabsService;
+    this.txAgent = txAgentService;
+    this.activeConversations = new Map();
+  }
+  
+  async startConversation(userId, userProfile) {
+    // Start ElevenLabs conversation
+    const sessionId = await this.elevenLabs.startConversation(userProfile);
     
-    // Inject into ElevenLabs conversation context
-    return this.elevenLabsService.updateConversationContext(
-      sessionId, 
-      medicalContext
-    );
+    // Store conversation state
+    this.activeConversations.set(sessionId, {
+      userId,
+      userProfile,
+      lastQuery: '',
+      medicalContexts: [],
+      emergencyLevel: 'none'
+    });
+    
+    return sessionId;
+  }
+  
+  async processUserMessage(sessionId, transcript) {
+    const conversation = this.activeConversations.get(sessionId);
+    if (!conversation) throw new Error('Conversation not found');
+    
+    // Store the latest user query
+    conversation.lastQuery = transcript;
+    
+    // Asynchronously retrieve medical context from TxAgent
+    this.enhanceWithMedicalKnowledge(sessionId, transcript, conversation.userProfile);
+    
+    // Return immediately to allow ElevenLabs to start processing
+    return {
+      sessionId,
+      status: 'processing',
+      transcript
+    };
+  }
+  
+  async enhanceWithMedicalKnowledge(sessionId, query, userProfile) {
+    try {
+      // Get relevant medical documents from TxAgent
+      const txAgentResponse = await this.txAgent.getMedicalContext(query, userProfile);
+      
+      // Extract the most relevant information
+      const medicalContext = this.extractRelevantContext(txAgentResponse);
+      
+      // Store for reference
+      const conversation = this.activeConversations.get(sessionId);
+      conversation.medicalContexts.push(medicalContext);
+      
+      // Inject into ElevenLabs conversation using contextual_update
+      await this.elevenLabs.injectContext(sessionId, medicalContext);
+      
+      // Check for emergency
+      if (txAgentResponse.safety?.emergency_detected) {
+        conversation.emergencyLevel = 'high';
+        await this.handleEmergencySituation(sessionId, txAgentResponse);
+      }
+    } catch (error) {
+      logger.error('Failed to enhance with medical knowledge', { error, sessionId });
+      // Continue conversation without enhancement
+    }
+  }
+  
+  extractRelevantContext(txAgentResponse) {
+    // Format TxAgent response into a concise context string
+    // that can be injected into the conversation
+    let context = '';
+    
+    if (txAgentResponse.response?.sources?.length > 0) {
+      context += 'Medical information: ';
+      txAgentResponse.response.sources.forEach(source => {
+        context += `${source.content.substring(0, 200)} `;
+      });
+    }
+    
+    return context;
   }
 }
 ```
@@ -113,9 +367,7 @@ class HybridMedicalConversation {
 #### 3.1 WebSocket Conversation Protocol
 ```typescript
 interface ConversationMessage {
-  type: 'audio_chunk' | 'transcript_partial' | 'transcript_final' | 
-        'ai_thinking' | 'ai_speaking' | 'ai_response_complete' | 
-        'emergency_detected' | 'conversation_end';
+  type: WebSocketMessageType;
   payload: any;
   timestamp: number;
   session_id: string;
@@ -131,6 +383,47 @@ enum ConversationState {
   WAITING = 'waiting',              // Waiting for user input
   EMERGENCY = 'emergency',          // Emergency detected
   ENDED = 'ended'                   // Conversation ended
+}
+
+// WebSocket handler on backend
+class ConversationWebSocketHandler {
+  async handleMessage(ws, message, session) {
+    const { type, payload } = JSON.parse(message);
+    
+    switch (type) {
+      case WebSocketMessageType.AUDIO_CHUNK:
+        await this.handleAudioChunk(ws, payload, session);
+        break;
+        
+      case WebSocketMessageType.CONVERSATION_END:
+        await this.handleConversationEnd(ws, payload, session);
+        break;
+        
+      // Other message types...
+    }
+  }
+  
+  async handleAudioChunk(ws, payload, session) {
+    // Process audio chunk
+    const { audio, isFinal } = payload;
+    
+    // If using ElevenLabs WebSocket API
+    await this.elevenLabsService.streamAudioChunk(session.conversationId, audio);
+    
+    // If processing locally for VAD
+    if (isFinal) {
+      const transcript = await this.speechService.transcribeAudioChunk(audio);
+      
+      // Send transcript to client
+      ws.send(JSON.stringify({
+        type: WebSocketMessageType.TRANSCRIPT_FINAL,
+        payload: { transcript }
+      }));
+      
+      // Process with TxAgent for medical context
+      this.orchestrator.processUserMessage(session.conversationId, transcript);
+    }
+  }
 }
 ```
 
@@ -165,6 +458,35 @@ class MedicalConversationManager {
       ...entities,
       risk_level: riskAssessment.level
     };
+    
+    // Format context for ElevenLabs contextual_update
+    return this.formatContextForInjection();
+  }
+  
+  formatContextForInjection() {
+    // Create a concise, formatted context string for ElevenLabs
+    let contextString = '';
+    
+    if (this.medicalContext.current_symptoms.length > 0) {
+      contextString += `Current symptoms: ${this.medicalContext.current_symptoms.join(', ')}. `;
+    }
+    
+    if (this.medicalContext.mentioned_medications.length > 0) {
+      contextString += `Medications mentioned: ${this.medicalContext.mentioned_medications.join(', ')}. `;
+    }
+    
+    if (this.medicalContext.profile) {
+      const profile = this.medicalContext.profile;
+      contextString += `Patient profile: ${profile.age} year old ${profile.gender}`;
+      
+      if (profile.conditions && profile.conditions.length > 0) {
+        contextString += ` with history of ${profile.conditions.join(', ')}`;
+      }
+      
+      contextString += '. ';
+    }
+    
+    return contextString;
   }
 }
 ```
@@ -183,11 +505,24 @@ class ConversationInterruptionHandler {
       await this.audioPlaybackController.stop();
       
       // Send interruption signal to ElevenLabs
-      await this.conversationService.signalInterruption();
+      // Using the WebSocket API to signal interruption
+      await this.conversationService.sendWebSocketMessage({
+        type: 'interrupt',
+        session_id: this.currentSessionId
+      });
       
       // Process user's interruption
       return this.processUserInput(audioChunk);
     }
+  }
+  
+  // Monitor for user speech during AI response
+  startInterruptionDetection() {
+    this.vadService.onSpeechDetected(() => {
+      if (this.isAISpeaking) {
+        this.handleUserInterruption();
+      }
+    });
   }
 }
 ```
@@ -367,7 +702,7 @@ ElevenLabs Conversational AI → Real-time Response
 ### 3. Medical Knowledge Enhancement
 ```
 User Query → Extract Medical Entities → Query TxAgent → 
-Inject Medical Context → Enhanced AI Response
+Inject Context via contextual_update → Enhanced AI Response
 ```
 
 ### 4. Emergency Detection Flow
@@ -375,6 +710,40 @@ Inject Medical Context → Enhanced AI Response
 Audio Stream → Real-time Transcript → Emergency Detection → 
 Interrupt Conversation → Emergency Response Protocol
 ```
+
+## ElevenLabs Context Injection Methods
+
+Based on research, we have three primary methods to inject TxAgent medical knowledge into the ElevenLabs conversation:
+
+### 1. WebSocket Contextual Updates (Preferred for Real-Time)
+```javascript
+// During active conversation
+websocket.send(JSON.stringify({
+  type: "contextual_update",
+  text: "Patient has a history of hypertension and diabetes. Recent lab results show HbA1c of 7.2%."
+}));
+```
+This method allows injecting context without interrupting the conversation flow, ideal for real-time RAG integration.
+
+### 2. Dynamic Variables (For Turn-Based Interactions)
+```javascript
+// When sending a new message via REST API
+fetch(`${apiUrl}/v1/conversations/${sessionId}/messages`, {
+  method: 'POST',
+  body: JSON.stringify({
+    role: "user",
+    content: "I've been dizzy lately.",
+    dynamic_variables: {
+      last_lab_results: "HbA1c: 7.2% (2024-06-01)",
+      medications: ["metformin", "lisinopril"]
+    }
+  })
+});
+```
+This approach works well for structured data that needs to be referenced in the conversation.
+
+### 3. Custom LLM Integration (For Advanced Control)
+When using a custom LLM, we can directly modify the system prompt or message history to include TxAgent context before it reaches the LLM.
 
 ## Performance Targets
 
@@ -402,7 +771,7 @@ Interrupt Conversation → Emergency Response Protocol
 ### Phase 2: ElevenLabs Integration (Weeks 3-4)
 - 🔧 Set up ElevenLabs Conversational AI
 - 🔧 Create hybrid conversation orchestrator
-- 🔧 Implement medical context injection
+- 🔧 Implement medical context injection using contextual_update events
 
 ### Phase 3: Real-Time Features (Weeks 5-6)
 - 🔧 Build conversation state management
