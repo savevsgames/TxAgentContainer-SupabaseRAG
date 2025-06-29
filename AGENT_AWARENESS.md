@@ -433,3 +433,271 @@ The Agent Awareness implementation provides a comprehensive foundation for intel
 **Current Status**: Phase 2 is **READY FOR DEPLOYMENT** with full backward compatibility and comprehensive testing. The system can intelligently extract complex symptom information, manage conversation flow, provide contextual medical advice, and detect emergency situations while maintaining the reliability and security of the Phase 1 foundation.
 
 The phased approach ensures each component is thoroughly tested and validated before integration, providing a robust, scalable, and user-friendly symptom tracking system that transforms how users interact with medical AI.
+
+
+DB SCHEMA FOR REFERENCE:
+
+-- WARNING: This schema is for context only and is not meant to be run.
+-- Table order and constraints may not be valid for execution.
+
+CREATE TABLE public.agents (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  status text DEFAULT 'initializing'::text,
+  session_data jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone DEFAULT now(),
+  last_active timestamp with time zone DEFAULT now(),
+  terminated_at timestamp with time zone,
+  CONSTRAINT agents_pkey PRIMARY KEY (id),
+  CONSTRAINT agents_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.conversation_sessions (
+  id text NOT NULL,
+  user_id uuid NOT NULL,
+  medical_profile jsonb DEFAULT '{}'::jsonb,
+  conversation_history jsonb DEFAULT '[]'::jsonb,
+  status text DEFAULT 'active'::text CHECK (status = ANY (ARRAY['active'::text, 'paused'::text, 'ended'::text])),
+  session_metadata jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  ended_at timestamp with time zone,
+  CONSTRAINT conversation_sessions_pkey PRIMARY KEY (id),
+  CONSTRAINT conversation_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.doctor_visits (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  user_id uuid NOT NULL,
+  visit_ts timestamp with time zone NOT NULL,
+  doctor_name text,
+  location text,
+  contact_phone text,
+  contact_email text,
+  visit_prep text,
+  visit_summary text,
+  follow_up_required boolean DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT doctor_visits_pkey PRIMARY KEY (id),
+  CONSTRAINT doctor_visits_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.documents (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  filename text,
+  content text NOT NULL,
+  embedding USER-DEFINED,
+  metadata jsonb DEFAULT '{}'::jsonb,
+  user_id uuid NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT documents_pkey PRIMARY KEY (id),
+  CONSTRAINT documents_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.embedding_jobs (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  file_path text NOT NULL,
+  status text NOT NULL DEFAULT 'pending'::text,
+  metadata jsonb DEFAULT '{}'::jsonb,
+  chunk_count integer DEFAULT 0,
+  error text,
+  user_id uuid NOT NULL,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT embedding_jobs_pkey PRIMARY KEY (id),
+  CONSTRAINT embedding_jobs_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.medical_consultations (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  session_id text NOT NULL,
+  query text NOT NULL,
+  response text NOT NULL,
+  sources jsonb,
+  voice_audio_url text,
+  video_url text,
+  consultation_type text NOT NULL,
+  processing_time integer,
+  emergency_detected boolean,
+  context_used jsonb,
+  confidence_score numeric,
+  recommendations jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT medical_consultations_pkey PRIMARY KEY (id),
+  CONSTRAINT medical_consultations_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.performance_metrics (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  test_run_id uuid,
+  metric_name character varying NOT NULL,
+  metric_value numeric,
+  metric_unit character varying,
+  page_url text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT performance_metrics_pkey PRIMARY KEY (id),
+  CONSTRAINT performance_metrics_test_run_id_fkey FOREIGN KEY (test_run_id) REFERENCES public.test_runs(id)
+);
+CREATE TABLE public.profile_allergies (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  profile_id uuid NOT NULL,
+  allergen text NOT NULL,
+  reaction text,
+  severity integer CHECK (severity >= 1 AND severity <= 10),
+  notes text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  user_id uuid NOT NULL DEFAULT auth.uid(),
+  CONSTRAINT profile_allergies_pkey PRIMARY KEY (id),
+  CONSTRAINT profile_allergies_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT profile_allergies_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES public.user_medical_profiles(id)
+);
+CREATE TABLE public.profile_conditions (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  profile_id uuid NOT NULL,
+  condition_name text NOT NULL,
+  diagnosed_at date,
+  severity integer CHECK (severity >= 1 AND severity <= 10),
+  ongoing boolean DEFAULT true,
+  notes text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  user_id uuid NOT NULL DEFAULT auth.uid(),
+  CONSTRAINT profile_conditions_pkey PRIMARY KEY (id),
+  CONSTRAINT profile_conditions_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT profile_conditions_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES public.user_medical_profiles(id)
+);
+CREATE TABLE public.profile_medications (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  profile_id uuid NOT NULL,
+  medication_name text NOT NULL,
+  dosage text,
+  frequency text,
+  start_date date,
+  end_date date,
+  prescribed_by text,
+  is_current boolean DEFAULT true,
+  notes text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  user_id uuid NOT NULL DEFAULT auth.uid(),
+  CONSTRAINT profile_medications_pkey PRIMARY KEY (id),
+  CONSTRAINT profile_medications_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id),
+  CONSTRAINT profile_medications_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES public.user_medical_profiles(id)
+);
+CREATE TABLE public.symptom_treatments (
+  symptom_id uuid NOT NULL,
+  treatment_id uuid NOT NULL,
+  CONSTRAINT symptom_treatments_pkey PRIMARY KEY (symptom_id, treatment_id),
+  CONSTRAINT symptom_treatments_treatment_id_fkey FOREIGN KEY (treatment_id) REFERENCES public.treatments(id),
+  CONSTRAINT symptom_treatments_symptom_id_fkey FOREIGN KEY (symptom_id) REFERENCES public.user_symptoms(id)
+);
+CREATE TABLE public.test_results (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  test_run_id uuid,
+  test_suite character varying NOT NULL,
+  test_name character varying NOT NULL,
+  status character varying NOT NULL,
+  duration_ms integer,
+  error_message text,
+  screenshot_url text,
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT test_results_pkey PRIMARY KEY (id),
+  CONSTRAINT test_results_test_run_id_fkey FOREIGN KEY (test_run_id) REFERENCES public.test_runs(id)
+);
+CREATE TABLE public.test_runs (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  trigger_type character varying NOT NULL,
+  environment character varying NOT NULL,
+  target_url text NOT NULL,
+  commit_sha character varying,
+  started_at timestamp with time zone DEFAULT now(),
+  completed_at timestamp with time zone,
+  status character varying DEFAULT 'running'::character varying,
+  total_tests integer DEFAULT 0,
+  passed_tests integer DEFAULT 0,
+  failed_tests integer DEFAULT 0,
+  skipped_tests integer DEFAULT 0,
+  CONSTRAINT test_runs_pkey PRIMARY KEY (id),
+  CONSTRAINT test_runs_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.test_suites (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  description text,
+  enabled boolean DEFAULT true,
+  test_count integer DEFAULT 0,
+  last_run_at timestamp with time zone,
+  average_duration_ms integer DEFAULT 0,
+  success_rate numeric DEFAULT 0,
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT test_suites_pkey PRIMARY KEY (id)
+);
+CREATE TABLE public.testing_admin_users (
+  user_id uuid NOT NULL,
+  email text NOT NULL UNIQUE,
+  added_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT testing_admin_users_pkey PRIMARY KEY (user_id),
+  CONSTRAINT testing_admin_users_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.treatments (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  user_id uuid NOT NULL,
+  treatment_type USER-DEFINED NOT NULL,
+  name text NOT NULL,
+  dosage text,
+  duration text,
+  description text,
+  doctor_recommended boolean DEFAULT false,
+  completed boolean DEFAULT false,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT treatments_pkey PRIMARY KEY (id),
+  CONSTRAINT treatments_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.user_medical_profiles (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  user_id uuid NOT NULL,
+  gender USER-DEFINED,
+  height_cm numeric,
+  weight_kg numeric,
+  blood_type USER-DEFINED,
+  conditions_summary text,
+  medications_summary text,
+  allergies_summary text,
+  family_history text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  date_of_birth date,
+  emergency_contact jsonb DEFAULT '{}'::jsonb,
+  full_name text,
+  CONSTRAINT user_medical_profiles_pkey PRIMARY KEY (id),
+  CONSTRAINT user_medical_profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.user_symptoms (
+  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  user_id uuid NOT NULL,
+  symptom_name text NOT NULL,
+  severity integer CHECK (severity >= 1 AND severity <= 10),
+  description text,
+  triggers text,
+  duration_hours integer,
+  location text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone NOT NULL DEFAULT now(),
+  CONSTRAINT user_symptoms_pkey PRIMARY KEY (id),
+  CONSTRAINT user_symptoms_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+);
+CREATE TABLE public.visit_symptoms (
+  visit_id uuid NOT NULL,
+  symptom_id uuid NOT NULL,
+  CONSTRAINT visit_symptoms_pkey PRIMARY KEY (visit_id, symptom_id),
+  CONSTRAINT visit_symptoms_symptom_id_fkey FOREIGN KEY (symptom_id) REFERENCES public.user_symptoms(id),
+  CONSTRAINT visit_symptoms_visit_id_fkey FOREIGN KEY (visit_id) REFERENCES public.doctor_visits(id)
+);
+CREATE TABLE public.visit_treatments (
+  visit_id uuid NOT NULL,
+  treatment_id uuid NOT NULL,
+  CONSTRAINT visit_treatments_pkey PRIMARY KEY (visit_id, treatment_id),
+  CONSTRAINT visit_treatments_visit_id_fkey FOREIGN KEY (visit_id) REFERENCES public.doctor_visits(id),
+  CONSTRAINT visit_treatments_treatment_id_fkey FOREIGN KEY (treatment_id) REFERENCES public.treatments(id)
+);
