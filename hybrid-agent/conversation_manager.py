@@ -335,7 +335,11 @@ class ConversationManager:
         """Get contextual medical advice based on symptom and user profile."""
         
         symptom_name = symptom_data.get("symptom_name", "").lower()
-        severity = symptom_data.get("severity", 0)
+        severity = symptom_data.get("severity")
+        
+        # Ensure severity is an integer for comparisons
+        if severity is None:
+            severity = 0
         
         # Find matching advice template
         advice_category = None
@@ -375,7 +379,11 @@ class ConversationManager:
         ]
         
         description = symptom_data.get("description", "").lower()
-        severity = symptom_data.get("severity", 0)
+        severity = symptom_data.get("severity")
+        
+        # Ensure severity is an integer for comparisons
+        if severity is None:
+            severity = 0
         
         # Check for emergency keywords
         if any(keyword in description for keyword in emergency_keywords):
@@ -432,7 +440,11 @@ class ConversationManager:
     ) -> str:
         """Assess urgency level of the symptom."""
         
-        severity = symptom_data.get("severity", 0)
+        severity = symptom_data.get("severity")
+        
+        # Ensure severity is an integer for comparisons
+        if severity is None:
+            severity = 0
         
         if self._detect_emergency_indicators(symptom_data, user_profile):
             return "critical"
