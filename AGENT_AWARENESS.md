@@ -20,10 +20,11 @@ The goal is to enable a natural, conversational flow where the AI can:
 
 Currently, the system operates with:
 - **TxAgent Container**: Processes queries and returns responses
-- **Backend**: Routes requests, manages authentication, and handles database operations
-- **Frontend**: Presents UI and sends user queries
+- **Full-Stack Doctor's Portal Backend**: Routes requests, manages authentication, and handles database operations
+- **Expo User's App Frontend**: Presents UI and sends user queries
+- **Doctor's Portal Document Uploader**: Document upload, search and TxAgent RAG chat interface with no user context (for RAG testing the agent). This chat endpoint should remain functional and "as is" - it is not a medical consulation chat and has no user data or context in the request.
 
-The missing piece is the ability for the AI to recognize when a user wants to log a symptom and then take appropriate action.
+The missing piece is the ability for the AI to recognize when a user in the expo app (frontend) wants to log a symptom and then take appropriate action.
 
 ## Implementation Strategy
 
