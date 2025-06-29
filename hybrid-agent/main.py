@@ -94,9 +94,14 @@ class JobResponse(BaseModel):
     error: Optional[str] = None
     message: str
 
+class ChatContext(BaseModel):
+    """Context object containing user profile and conversation history"""
+    user_profile: Optional[Dict[str, Any]] = Field(None, description="User's medical profile and personal information")
+    conversation_history: Optional[List[Dict[str, str]]] = Field(None, description="Previous conversation messages")
+
 class ChatRequest(BaseModel):
     query: str = Field(..., description="User's medical question or query")
-    history: List[Dict[str, str]] = Field(default=[], description="Previous conversation history")
+    context: Optional[ChatContext] = Field(None, description="User context including profile and conversation history")
     top_k: int = Field(5, description="Number of similar documents to retrieve")
     temperature: float = Field(0.7, description="Temperature for response generation")
     stream: bool = Field(False, description="Whether to stream the response")
@@ -431,6 +436,7 @@ async def chat(
     
     This endpoint performs similarity search to find relevant documents,
     then generates a response using an LLM based on the query and context.
+    Now enhanced to utilize user profile and conversation history for personalized responses.
     """
     logger.info(f"🚀 CHAT REQUEST: {request.query[:50]}...")
     
@@ -441,10 +447,27 @@ async def chat(
         
         logger.info(f"✅ Chat request authenticated for user: {user_id}")
         
+        # Log user context information if provided
+        user_profile = None
+        conversation_history = None
+        
+        if request.context:
+            user_profile = request.context.user_profile
+            conversation_history = request.context.conversation_history
+            
+            if user_profile:
+                logger.info(f"🔍 CHAT: User profile provided with keys: {list(user_profile.keys())}")
+            if conversation_history:
+                logger.info(f"🔍 CHAT: Conversation history provided with {len(conversation_history)} messages")
+        else:
+            logger.info("ℹ️ CHAT: No context provided - using query only")
+        
         auth_service.log_auth_event("chat_request", user_context=user_payload, success=True, details={
             "query_length": len(request.query),
             "top_k": request.top_k,
-            "temperature": request.temperature
+            "temperature": request.temperature,
+            "has_user_profile": user_profile is not None,
+            "has_conversation_history": conversation_history is not None and len(conversation_history) > 0
         })
         
         start_time = time.time()
@@ -468,12 +491,14 @@ async def chat(
                 status="no_results"
             )
         
-        # Generate response using LLM if available
+        # Generate response using LLM if available - now with user context
         if llm_handler:
             response = await llm_handler.generate_response(
                 query=request.query,
                 context=similar_docs,
-                temperature=request.temperature
+                temperature=request.temperature,
+                user_profile=user_profile,
+                conversation_history=conversation_history
             )
             tokens_used = len(response.split())  # Rough token estimate
         else:
@@ -499,7 +524,9 @@ async def chat(
         request_logger.log_performance_metric("chat_response", time.time() - start_time, user_context=user_payload, metadata={
             "sources_found": len(sources),
             "response_length": len(response),
-            "tokens_used": tokens_used
+            "tokens_used": tokens_used,
+            "used_user_profile": user_profile is not None,
+            "used_conversation_history": conversation_history is not None and len(conversation_history) > 0
         })
         
         return ChatResponse(
@@ -720,7 +747,9 @@ async def health_check(
             "text_embedding": True,
             "rag_chat": True,
             "vector_storage": True,
-            "gpu_available": torch.cuda.is_available()
+            "gpu_available": torch.cuda.is_available(),
+            "user_context_support": True,
+            "conversation_history_support": True
         }
     }
     
