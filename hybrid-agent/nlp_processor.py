@@ -458,10 +458,11 @@ class AdvancedNLPProcessor:
         """Analyze conversation flow and determine appropriate response strategy."""
         flow_analysis = {
             "conversation_stage": "initial",
-            "user_intent_clarity": "unclear",
+            "user_intent_clarity": "unclear",  # Explicitly initialize
             "information_completeness": 0.0,
             "suggested_response_type": "clarifying_question",
-            "conversation_context": {}
+            "conversation_context": {},
+            "query": query  # Add original query for easier access
         }
         
         # Determine conversation stage
@@ -479,6 +480,7 @@ class AdvancedNLPProcessor:
             flow_analysis["user_intent_clarity"] = "clear"
         elif any(symptom in query_lower for symptom in ["pain", "hurt", "ache", "sick", "unwell"]):
             flow_analysis["user_intent_clarity"] = "implicit"
+        # else: remains "unclear" as initialized
         
         # Calculate information completeness
         extracted = self.extract_comprehensive_symptom_data(query, conversation_history)

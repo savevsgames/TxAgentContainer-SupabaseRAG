@@ -15,6 +15,8 @@ The goal is to enable a natural, conversational flow where the AI can:
 - Retrieve symptom history
 - Present symptom trends and patterns
 - Make recommendations based on symptom history
+- **NEW**: Engage in natural conversation without always taking action
+- **NEW**: Demonstrate appropriate medical "bedside manner"
 
 ## Current Architecture
 
@@ -314,6 +316,145 @@ I'm logging this as a critical symptom entry for your medical records."
 - **Error Tracking**: Component-specific error monitoring
 - **User Experience**: Conversation quality metrics
 
+## Phase 2.8: Improved Conversation Flow (Bedside Manner) - 🔄 IN PROGRESS
+
+### Phase 2.8 Goals - 🎯 NEW ENHANCEMENT
+- **Natural Conversation**: Allow for general chat without always taking action
+- **Improved Bedside Manner**: More discerning about when to log symptoms vs. just chat
+- **Context-Aware Responses**: Better understanding of conversational vs. medical intent
+- **Reduced Over-Eagerness**: Stop aggressive symptom logging for casual mentions
+
+### Phase 2.8.1: Enhanced Conversation Strategy - 🔄 IMPLEMENTING
+
+#### A. New Conversation Strategies
+
+**Strategy Priority Order:**
+1. **Emergency Response** - Critical symptoms requiring immediate attention
+2. **Explicit Symptom Logging** - Clear intent to log symptoms with sufficient detail
+3. **Symptom History Retrieval** - Explicit requests for symptom history
+4. **Partial Symptom Logging** - Some symptom details but missing key information
+5. **General Health Information** - Health-related questions without logging intent
+6. **General Conversation** - **NEW**: Natural chat without medical action
+7. **Clarifying Questions** - Insufficient information to determine intent
+
+#### B. Refined Strategy Determination
+
+**Enhanced Conditions:**
+- **Symptom Logging**: Requires clear intent AND information completeness > 0.6
+- **Partial Logging**: Symptom name present AND completeness 0.3-0.6
+- **General Conversation**: **NEW**: Default for casual greetings, general questions
+- **Emergency**: Immediate escalation for critical symptoms
+
+#### C. New Response Types
+
+**General Conversation Responses:**
+- Friendly, professional greetings
+- Open-ended health discussions
+- Educational information without action
+- Natural conversation flow
+
+### Phase 2.8.2: Implementation Changes - 🔄 IMPLEMENTING
+
+#### A. Conversation Manager Updates (`conversation_manager.py`)
+
+**New Methods:**
+- `_generate_general_conversation_response()` - Handle casual conversation
+- Enhanced `_determine_conversation_strategy()` - More stringent conditions
+- Refined `enhance_response_with_context()` - Cleaner message handling
+
+**Strategy Improvements:**
+- Higher thresholds for symptom logging actions
+- Better distinction between medical and conversational intent
+- Reduced false positives for symptom detection
+
+#### B. Main Chat Endpoint Updates (`main.py`)
+
+**Enhanced Logic:**
+- More precise agent action triggering
+- Better confirmation message handling
+- Improved timestamp formatting
+- Cleaner response composition
+
+#### C. NLP Processor Updates (`nlp_processor.py`)
+
+**Clarity Improvements:**
+- Explicit initialization of `user_intent_clarity`
+- Better default handling for unclear intents
+- Enhanced query context preservation
+
+### Phase 2.8.3: Expected Improved User Experience - 🎯 TARGET
+
+#### Scenario 1: Casual Greeting
+
+**User**: "Hi, how are you?"
+
+**TxAgent Enhanced**: "Hello! I'm here to help you with any health-related questions or to assist with tracking your symptoms. How can I help you today?"
+
+*No symptom logging attempt, no medical advice dump*
+
+#### Scenario 2: General Health Question
+
+**User**: "What's the difference between a cold and flu?"
+
+**TxAgent Enhanced**: "Great question! Colds and flu are both respiratory illnesses, but they're caused by different viruses and have some key differences:
+
+**Cold symptoms** are usually milder and develop gradually - runny nose, sneezing, mild cough, and sometimes a low-grade fever.
+
+**Flu symptoms** tend to come on suddenly and are more severe - high fever, body aches, fatigue, and can include nausea.
+
+Are you experiencing any symptoms yourself, or is this just general information you're looking for?"
+
+*Educational response with gentle inquiry, not aggressive symptom logging*
+
+#### Scenario 3: Clear Symptom Logging Intent
+
+**User**: "I want to log a headache I've had for 3 hours, it's about a 7/10"
+
+**TxAgent Enhanced**: "✅ I've logged your headache with the details you provided:
+- **Duration**: 3 hours
+- **Severity**: 7/10
+
+For headaches at this severity level, rest, hydration, and a quiet environment can help. If this is unusual for you or doesn't improve, consider consulting with a healthcare provider.
+
+Would you like me to ask a few more questions to better track this symptom?"
+
+*Clear action taken with appropriate medical advice*
+
+### Phase 2.8.4: Technical Implementation Plan - 🔄 READY
+
+#### A. File Modifications Required
+
+1. **`conversation_manager.py`**:
+   - Add `general_conversation` strategy
+   - Implement `_generate_general_conversation_response()`
+   - Refine strategy determination logic
+   - Simplify response enhancement
+
+2. **`main.py`**:
+   - Update strategy handling
+   - Improve agent action triggering
+   - Better confirmation message control
+   - Enhanced timestamp formatting
+
+3. **`nlp_processor.py`**:
+   - Initialize `user_intent_clarity` explicitly
+   - Add query to flow analysis
+   - Improve default handling
+
+#### B. Backward Compatibility
+
+- All existing functionality preserved
+- Phase 1 fallback maintained
+- API contracts unchanged
+- Database schema unmodified
+
+#### C. Testing Strategy
+
+- Update Postman collection with new scenarios
+- Test casual conversation flows
+- Validate symptom logging still works
+- Verify emergency detection unchanged
+
 ## Phase 3: Frontend Integration (User Experience) - 📋 PLANNED
 
 ### Phase 3 Goals (Future Implementation)
@@ -360,6 +501,11 @@ I'm logging this as a critical symptom entry for your medical records."
 - **Week 7-8**: Integration testing and performance optimization
 - **Status**: **IMPLEMENTATION COMPLETE** ✅
 
+### 🔄 Phase 2.8: Improved Conversation Flow (In Progress)
+- **Current**: Enhanced conversation strategies and bedside manner
+- **Timeline**: 1-2 days for implementation and testing
+- **Status**: **IMPLEMENTING NOW** 🔄
+
 ### 📋 Phase 3: Frontend Integration (Planned)
 - **Week 9-10**: Expo app enhancements and UI components
 - **Week 11-12**: Dashboard implementation and testing
@@ -379,6 +525,12 @@ I'm logging this as a critical symptom entry for your medical records."
 - **Medical Advice**: >95% relevant and safe medical guidance
 - **Emergency Detection**: >99% accuracy for critical symptoms
 - **User Satisfaction**: >4.5/5 rating for conversation quality
+
+### Phase 2.8 Metrics - 🎯 NEW TARGET
+- **Conversation Appropriateness**: >90% appropriate strategy selection
+- **Reduced False Positives**: <10% inappropriate symptom logging attempts
+- **User Satisfaction**: >4.7/5 rating for natural conversation flow
+- **Bedside Manner**: >4.5/5 rating for professional, caring interaction
 
 ### Phase 3 Metrics - 📋 PLANNED
 - **UI Responsiveness**: <200ms for symptom logging confirmations
@@ -428,14 +580,13 @@ I'm logging this as a critical symptom entry for your medical records."
 
 ## Conclusion
 
-The Agent Awareness implementation provides a comprehensive foundation for intelligent symptom tracking with natural conversation capabilities. Phase 1 establishes the core infrastructure, Phase 2 adds sophisticated intelligence, and Phase 3 will complete the user experience.
+The Agent Awareness implementation provides a comprehensive foundation for intelligent symptom tracking with natural conversation capabilities. Phase 1 establishes the core infrastructure, Phase 2 adds sophisticated intelligence with improved bedside manner (Phase 2.8), and Phase 3 will complete the user experience.
 
-**Current Status**: Phase 2 is **READY FOR DEPLOYMENT** with full backward compatibility and comprehensive testing. The system can intelligently extract complex symptom information, manage conversation flow, provide contextual medical advice, and detect emergency situations while maintaining the reliability and security of the Phase 1 foundation.
+**Current Status**: Phase 2.8 is **IMPLEMENTING NOW** with enhanced conversation flow and improved bedside manner. The system will intelligently distinguish between casual conversation and medical intent, providing a more natural and professional interaction experience while maintaining all existing functionality.
 
 The phased approach ensures each component is thoroughly tested and validated before integration, providing a robust, scalable, and user-friendly symptom tracking system that transforms how users interact with medical AI.
 
-
-DB SCHEMA FOR REFERENCE:
+**DB SCHEMA FOR REFERENCE:**
 
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.

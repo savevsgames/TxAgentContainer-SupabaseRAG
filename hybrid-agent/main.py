@@ -12,6 +12,7 @@ import time
 import psutil
 import torch
 import json
+from datetime import datetime
 
 from embedder import Embedder
 from llm import LLMHandler
@@ -45,14 +46,14 @@ request_logger.log_system_event("startup", {
     "port": os.getenv("PORT", "8000"),
     "log_level": os.getenv("LOG_LEVEL", "INFO"),
     "agent_awareness": True,
-    "phase": "2"
+    "phase": "2.8"
 })
 
 # Initialize FastAPI app
 app = FastAPI(
     title="TxAgent Hybrid Container",
-    description="Medical RAG Vector Uploader with BioBERT embeddings, chat capabilities, and Phase 2 agent awareness",
-    version="1.2.0"
+    description="Medical RAG Vector Uploader with BioBERT embeddings, chat capabilities, and Phase 2.8 enhanced conversation flow",
+    version="1.2.8"
 )
 
 # Add CORS middleware with extensive logging
@@ -161,9 +162,19 @@ class HealthResponse(BaseModel):
     status: str = "healthy"
     model: str = os.getenv("MODEL_NAME", "dmis-lab/biobert-v1.1")
     device: str = os.getenv("DEVICE", "cuda")
-    version: str = "1.2.0"
+    version: str = "1.2.8"
     uptime: Optional[int] = None
     memory_usage: Optional[str] = None
+
+# Mock request class for agent actions
+class MockRequest:
+    def __init__(self, headers, json_data=None, query_params=None):
+        self.headers = headers
+        self._json_data = json_data or {}
+        self.query_params = query_params or {}
+    
+    async def json(self):
+        return self._json_data
 
 # Middleware to log all requests using centralized auth service
 @app.middleware("http")
@@ -486,7 +497,7 @@ async def chat(
     
     This endpoint performs similarity search to find relevant documents,
     then generates a response using an LLM based on the query and context.
-    Now enhanced with Phase 2 conversation management for intelligent symptom tracking.
+    Now enhanced with Phase 2.8 conversation management for improved bedside manner.
     """
     logger.info(f"🚀 CHAT REQUEST: {request.query[:50]}...")
     
@@ -514,10 +525,10 @@ async def chat(
         
         start_time = time.time()
         
-        # PHASE 2: Enhanced Conversation Management
+        # PHASE 2.8: Enhanced Conversation Management with improved bedside manner
         conversation_result = None
         if conversation_manager and conversation_history:
-            logger.info("🔍 CHAT: Using Phase 2 conversation management")
+            logger.info("🔍 CHAT: Using Phase 2.8 enhanced conversation management")
             conversation_result = conversation_manager.process_conversation_turn(
                 request.query, 
                 conversation_history, 
@@ -536,13 +547,22 @@ async def chat(
             strategy = conversation_result.get("strategy", {})
             symptom_data = conversation_result.get("symptom_data", {})
             
+            # Enhanced strategy handling for Phase 2.8
             if strategy.get("action") == "log_symptom" and conversation_result.get("should_log_symptom"):
                 intent_type = "log_symptom"
                 intent_confidence = strategy.get("confidence", 0.8)
                 intent_data = symptom_data
+            elif strategy.get("action") == "log_symptom_partial":
+                intent_type = "log_symptom"
+                intent_confidence = strategy.get("confidence", 0.7)
+                intent_data = symptom_data
             elif strategy.get("action") == "get_symptom_history":
                 intent_type = "get_symptom_history"
                 intent_confidence = strategy.get("confidence", 0.8)
+                intent_data = symptom_data
+            elif strategy.get("action") == "alert_emergency":
+                intent_type = "emergency"
+                intent_confidence = strategy.get("confidence", 0.95)
                 intent_data = symptom_data
         elif intent_recognizer:
             # Fall back to Phase 1 intent recognition
@@ -554,21 +574,12 @@ async def chat(
         
         logger.info(f"🔍 INTENT: Detected '{intent_type}' with confidence {intent_confidence}")
         
-        # Handle symptom logging intent
-        if intent_type == "log_symptom" and intent_confidence > 0.5:
+        # Handle symptom logging intent (only if confidence is high enough)
+        if intent_type == "log_symptom" and intent_confidence > 0.6:
             if intent_data.get("symptom_name"):
                 # We have enough data to log the symptom
                 try:
                     logger.info(f"🔍 INTENT: Attempting to log symptom: {intent_data}")
-                    
-                    # Create a mock request for the agent action
-                    class MockRequest:
-                        def __init__(self, headers, json_data):
-                            self.headers = headers
-                            self._json_data = json_data
-                        
-                        async def json(self):
-                            return self._json_data
                     
                     mock_request = MockRequest(
                         headers={'Authorization': authorization},
@@ -611,12 +622,6 @@ async def chat(
         elif intent_type == "get_symptom_history" and intent_confidence > 0.5:
             try:
                 logger.info(f"🔍 INTENT: Attempting to retrieve symptom history: {intent_data}")
-                
-                # Create a mock request for the agent action
-                class MockRequest:
-                    def __init__(self, headers, query_params):
-                        self.headers = headers
-                        self.query_params = query_params
                 
                 mock_request = MockRequest(
                     headers={'Authorization': authorization},
@@ -688,7 +693,7 @@ async def chat(
                 base_response = f"Based on the documents I found, here's relevant information: {similar_docs[0]['content'][:200]}..."
                 tokens_used = len(base_response.split())
         
-        # PHASE 2: Enhanced response generation with conversation context
+        # PHASE 2.8: Enhanced response generation with improved conversation context
         if conversation_manager and conversation_result:
             final_response = conversation_manager.enhance_response_with_context(
                 base_response, 
@@ -696,28 +701,37 @@ async def chat(
                 agent_action_result
             )
         else:
-            # Phase 1 response modification
+            # Phase 1 response modification (improved)
             final_response = base_response
-            if agent_action_result:
-                if agent_action_result["action"] == "symptom_logged" and agent_action_result["success"]:
+            
+            # Only add confirmation messages if an action was actually taken
+            if agent_action_result and agent_action_result.get("success"):
+                if agent_action_result["action"] == "symptom_logged":
                     symptom_name = agent_action_result["data"].get("symptom_name", "symptom")
                     final_response = f"✅ I've logged your {symptom_name} in your symptom history.\n\n{base_response}"
-                elif agent_action_result["action"] == "symptom_history_retrieved" and agent_action_result["success"]:
+                elif agent_action_result["action"] == "symptom_history_retrieved":
                     symptoms = agent_action_result["data"].get("symptoms", [])
                     if symptoms:
                         symptom_summary = f"📊 I found {len(symptoms)} symptom entries in your history. "
-                        # Add some basic analysis
+                        # Add some basic analysis with improved timestamp formatting
                         if len(symptoms) > 1:
                             recent_symptom = symptoms[0]  # Most recent
                             symptom_summary += f"Your most recent entry was '{recent_symptom.get('symptom_name')}' "
                             if recent_symptom.get('created_at'):
-                                symptom_summary += f"logged recently. "
+                                # Format timestamp more naturally
+                                try:
+                                    created_at = datetime.fromisoformat(recent_symptom['created_at'].replace('Z', '+00:00'))
+                                    formatted_date = created_at.strftime("%B %d at %I:%M %p")
+                                    symptom_summary += f"logged on {formatted_date}. "
+                                except:
+                                    symptom_summary += f"logged recently. "
                         final_response = f"{symptom_summary}\n\n{base_response}"
                     else:
                         final_response = "📊 I didn't find any symptoms in your history yet. You can start logging symptoms by telling me about any symptoms you're experiencing.\n\n" + base_response
-                elif agent_action_result["action"] == "symptom_logging_incomplete":
+            elif agent_action_result and not agent_action_result.get("success"):
+                if agent_action_result["action"] == "symptom_logging_incomplete":
                     final_response = f"🤔 {agent_action_result.get('message', 'I need more details to log your symptom.')}\n\n{base_response}"
-                elif not agent_action_result["success"]:
+                else:
                     final_response = f"⚠️ I tried to help with your request but encountered an issue: {agent_action_result.get('error', 'Unknown error')}.\n\n{base_response}"
         
         # Format sources for response
@@ -771,7 +785,7 @@ async def chat(
                 "strategy": conversation_result.get("strategy"),
                 "flow_analysis": conversation_result.get("flow_analysis"),
                 "follow_up_needed": conversation_result.get("follow_up_needed"),
-                "phase": "2"
+                "phase": "2.8"
             }
         
         return ChatResponse(**response_data)
@@ -971,7 +985,7 @@ async def health_check(
         "status": "healthy",
         "model": os.getenv("MODEL_NAME", "dmis-lab/biobert-v1.1"),
         "device": os.getenv("DEVICE", "cuda"),
-        "version": "1.2.0",
+        "version": "1.2.8",
         "uptime": uptime_seconds,
         "memory_usage": memory_usage,
         "endpoints": [
@@ -997,8 +1011,10 @@ async def health_check(
             "symptom_tracking": True,
             "phase1_features": True,
             "phase2_features": nlp_processor is not None and conversation_manager is not None,
+            "phase2_8_enhanced_conversation":  nlp_processor is not None and conversation_manager is not None,
             "advanced_nlp": nlp_processor is not None,
-            "conversation_management": conversation_manager is not None
+            "conversation_management": conversation_manager is not None,
+            "improved_bedside_manner": True
         }
     }
     
@@ -1050,7 +1066,8 @@ async def health_check(
         "status": "healthy",
         "session_id": x_session_id,
         "session_updated": health_data.get("session_updated", False),
-        "phase2_features": health_data["capabilities"]["phase2_features"]
+        "phase2_features": health_data["capabilities"]["phase2_features"],
+        "phase2_8_enhanced": health_data["capabilities"]["phase2_8_enhanced_conversation"]
     })
     
     return health_data

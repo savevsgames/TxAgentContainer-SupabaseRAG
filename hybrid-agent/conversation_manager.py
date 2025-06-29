@@ -2,7 +2,7 @@
 Conversation Manager for TxAgent Agent Awareness Phase 2.
 
 This module manages conversation flow, context, and intelligent response generation
-for natural symptom tracking conversations.
+for natural symptom tracking conversations with improved bedside manner.
 """
 
 import logging
@@ -15,7 +15,7 @@ from nlp_processor import AdvancedNLPProcessor
 logger = logging.getLogger("conversation_manager")
 
 class ConversationManager:
-    """Manages conversation flow and context for intelligent symptom tracking."""
+    """Manages conversation flow and context for intelligent symptom tracking with improved bedside manner."""
     
     def __init__(self):
         self.nlp_processor = AdvancedNLPProcessor()
@@ -51,6 +51,17 @@ class ConversationManager:
                 "📊 I don't see any symptoms in your history yet. You can start tracking by telling me about any symptoms you're experiencing.",
                 "📊 Your symptom log is empty. Feel free to share any symptoms you'd like to track.",
                 "📊 No symptoms recorded yet. I'm here to help you start tracking your health."
+            ],
+            "general_conversation": [
+                "Hello! I'm here to help you with any health-related questions or to assist with tracking your symptoms. How can I help you today?",
+                "I'm here to assist you with your health concerns. What would you like to discuss?",
+                "How can I help you today? I can answer health questions, help track symptoms, or provide general medical information.",
+                "I'm here to support your health journey. What can I help you with?"
+            ],
+            "general_health_info": [
+                "That's a great question about {topic}. Let me provide some helpful information.",
+                "I'd be happy to help explain {topic} for you.",
+                "Here's some information about {topic} that might be helpful."
             ]
         }
         
@@ -98,11 +109,11 @@ class ConversationManager:
         # Extract comprehensive symptom data
         symptom_data = self.nlp_processor.extract_comprehensive_symptom_data(query, conversation_history)
         
-        # Determine conversation strategy
+        # Determine conversation strategy with improved logic
         strategy = self._determine_conversation_strategy(flow_analysis, symptom_data, user_profile)
         
         # Generate appropriate response
-        response_data = self._generate_contextual_response(strategy, symptom_data, flow_analysis, user_profile)
+        response_data = self._generate_contextual_response(strategy, symptom_data, flow_analysis, user_profile, query)
         
         result = {
             "strategy": strategy,
@@ -122,45 +133,72 @@ class ConversationManager:
         symptom_data: Dict[str, Any], 
         user_profile: Optional[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        """Determine the appropriate conversation strategy."""
+        """Determine the appropriate conversation strategy with improved bedside manner."""
         
         strategy = {
-            "type": "clarifying_question",
+            "type": "general_conversation",  # Default to general conversation
             "action": None,
-            "priority": "medium",
+            "priority": "normal",
             "confidence": 0.5
         }
         
-        # Check if we have enough information to log a symptom
-        if symptom_data.get("symptom_name") and flow_analysis["information_completeness"] > 0.4:
+        # 1. EMERGENCY DETECTION (Highest Priority)
+        if self._detect_emergency_indicators(symptom_data, user_profile):
+            strategy["type"] = "emergency_response"
+            strategy["action"] = "alert_emergency"
+            strategy["priority"] = "critical"
+            strategy["confidence"] = 0.95
+            return strategy
+        
+        # 2. EXPLICIT SYMPTOM LOGGING (High confidence + good completeness)
+        if (symptom_data.get("symptom_name") and 
+            flow_analysis["information_completeness"] > 0.6 and
+            flow_analysis.get("user_intent_clarity") in ["clear", "implicit"]):
+            
             strategy["type"] = "symptom_logging"
             strategy["action"] = "log_symptom"
-            strategy["confidence"] = 0.8
-            
-            # Check if it's complete enough for immediate logging
-            if flow_analysis["information_completeness"] > 0.7:
-                strategy["priority"] = "high"
-                strategy["confidence"] = 0.9
-            else:
-                strategy["type"] = "partial_logging_with_follow_up"
+            strategy["confidence"] = 0.9
+            strategy["priority"] = "high"
+            return strategy
         
-        # Check for symptom history requests
-        elif any(word in symptom_data.get("description", "").lower() 
-                for word in ["history", "log", "previous", "past", "show me"]):
+        # 3. SYMPTOM HISTORY REQUESTS
+        if self._is_symptom_history_request(symptom_data.get("description", "")):
             strategy["type"] = "symptom_history"
             strategy["action"] = "get_symptom_history"
             strategy["confidence"] = 0.9
+            strategy["priority"] = "high"
+            return strategy
         
-        # Check for emergency indicators
-        elif self._detect_emergency_indicators(symptom_data, user_profile):
-            strategy["type"] = "emergency_response"
-            strategy["priority"] = "critical"
-            strategy["confidence"] = 0.95
-        
-        # Check for general health questions
-        elif self._is_general_health_question(symptom_data.get("description", "")):
-            strategy["type"] = "health_information"
+        # 4. PARTIAL SYMPTOM LOGGING (Some info but incomplete)
+        if (symptom_data.get("symptom_name") and 
+            flow_analysis["information_completeness"] > 0.3 and
+            flow_analysis["information_completeness"] <= 0.6):
+            
+            strategy["type"] = "partial_logging_with_follow_up"
+            strategy["action"] = "log_symptom_partial"
             strategy["confidence"] = 0.7
+            strategy["priority"] = "medium"
+            return strategy
+        
+        # 5. GENERAL HEALTH INFORMATION
+        if self._is_general_health_question(symptom_data.get("description", "")):
+            strategy["type"] = "health_information"
+            strategy["confidence"] = 0.8
+            strategy["priority"] = "normal"
+            return strategy
+        
+        # 6. GENERAL CONVERSATION (Default - improved)
+        # This handles greetings, casual questions, and non-medical chat
+        strategy["type"] = "general_conversation"
+        strategy["confidence"] = 0.6
+        strategy["priority"] = "normal"
+        
+        # 7. CLARIFYING QUESTIONS (Only if we have some medical context but unclear intent)
+        if (symptom_data.get("symptom_name") or 
+            any(word in symptom_data.get("description", "").lower() 
+                for word in ["pain", "hurt", "sick", "feel", "symptom"])):
+            strategy["type"] = "clarifying_question"
+            strategy["confidence"] = 0.4
         
         return strategy
 
@@ -169,7 +207,8 @@ class ConversationManager:
         strategy: Dict[str, Any], 
         symptom_data: Dict[str, Any], 
         flow_analysis: Dict[str, Any], 
-        user_profile: Optional[Dict[str, Any]]
+        user_profile: Optional[Dict[str, Any]],
+        original_query: str
     ) -> Dict[str, Any]:
         """Generate contextual response based on strategy and data."""
         
@@ -195,12 +234,47 @@ class ConversationManager:
             response_data = self._generate_emergency_response(symptom_data, user_profile)
         
         elif strategy_type == "health_information":
-            response_data = self._generate_health_information_response(symptom_data, user_profile)
+            response_data = self._generate_health_information_response(symptom_data, user_profile, original_query)
+        
+        elif strategy_type == "general_conversation":
+            response_data = self._generate_general_conversation_response(original_query, flow_analysis)
         
         else:  # clarifying_question
             response_data = self._generate_clarifying_response(symptom_data, flow_analysis)
         
         return response_data
+
+    def _generate_general_conversation_response(
+        self, 
+        original_query: str, 
+        flow_analysis: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Generate response for general conversation without medical action."""
+        
+        query_lower = original_query.lower()
+        
+        # Handle greetings
+        if any(greeting in query_lower for greeting in ["hi", "hello", "hey", "good morning", "good afternoon"]):
+            message = self.response_templates["general_conversation"][0]
+        
+        # Handle "how are you" type questions
+        elif any(phrase in query_lower for phrase in ["how are you", "how's it going", "what's up"]):
+            message = "I'm here and ready to help! I can assist with health questions, symptom tracking, or provide medical information. What would you like to discuss?"
+        
+        # Handle general questions about the service
+        elif any(phrase in query_lower for phrase in ["what can you do", "help me", "what do you do"]):
+            message = "I can help you in several ways:\n\n• Answer general health questions\n• Track and log your symptoms\n• Provide information from your medical documents\n• Help you understand medical conditions\n• Assist with health-related concerns\n\nWhat would you like to start with?"
+        
+        # Default friendly response
+        else:
+            message = self.response_templates["general_conversation"][1]
+        
+        return {
+            "message": message,
+            "follow_up_questions": [],
+            "medical_advice": "",
+            "urgency_level": "normal"
+        }
 
     def _generate_symptom_logging_response(
         self, 
@@ -283,24 +357,39 @@ class ConversationManager:
         """Generate emergency response."""
         
         return {
-            "message": "⚠️ Based on your symptoms, this may require immediate medical attention. Please contact emergency services (911) or go to the nearest emergency room.",
+            "message": "🚨 **URGENT**: Based on your symptoms, this may require immediate medical attention. Please contact emergency services (911) or go to the nearest emergency room immediately.",
             "follow_up_questions": [],
-            "medical_advice": "Do not delay seeking emergency medical care.",
+            "medical_advice": "Do not delay seeking emergency medical care. These symptoms can indicate a serious medical condition that needs prompt evaluation.",
             "urgency_level": "critical"
         }
 
     def _generate_health_information_response(
         self, 
         symptom_data: Dict[str, Any], 
-        user_profile: Optional[Dict[str, Any]]
+        user_profile: Optional[Dict[str, Any]],
+        original_query: str
     ) -> Dict[str, Any]:
         """Generate health information response."""
+        
+        # Extract topic from query for more personalized response
+        topic = "that topic"
+        query_lower = original_query.lower()
+        
+        # Try to identify the health topic
+        health_topics = ["cold", "flu", "fever", "headache", "pain", "medication", "treatment", "symptoms"]
+        for topic_word in health_topics:
+            if topic_word in query_lower:
+                topic = topic_word
+                break
+        
+        template = self.response_templates["general_health_info"][0]
+        message = template.format(topic=topic)
         
         medical_advice = self._get_contextual_medical_advice(symptom_data, user_profile)
         
         return {
-            "message": "I can provide some general health information based on your question.",
-            "follow_up_questions": ["Would you like me to log this as a symptom for tracking?"],
+            "message": message,
+            "follow_up_questions": ["Are you experiencing any symptoms yourself, or is this just general information you're looking for?"],
             "medical_advice": medical_advice,
             "urgency_level": "normal"
         }
@@ -326,6 +415,14 @@ class ConversationManager:
             "medical_advice": "",
             "urgency_level": "normal"
         }
+
+    def _is_symptom_history_request(self, description: str) -> bool:
+        """Check if this is a symptom history request."""
+        history_indicators = [
+            "show me my", "my history", "my symptoms", "what symptoms", "symptom log",
+            "previous symptoms", "past symptoms", "history of", "logged symptoms"
+        ]
+        return any(indicator in description.lower() for indicator in history_indicators)
 
     def _get_contextual_medical_advice(
         self, 
@@ -402,7 +499,7 @@ class ConversationManager:
         
         question_indicators = [
             "what is", "how do", "why does", "can you explain", "tell me about",
-            "information about", "learn about", "understand"
+            "information about", "learn about", "understand", "difference between"
         ]
         
         return any(indicator in description.lower() for indicator in question_indicators)
@@ -486,22 +583,11 @@ class ConversationManager:
         medical_advice = response_data.get("medical_advice", "")
         urgency_level = response_data.get("urgency_level", "normal")
         
-        # Start with the conversation manager's message if available
+        # Start with the conversation manager's message if available, otherwise use base response
         if message:
             enhanced_response = message
         else:
             enhanced_response = base_response
-        
-        # Add agent action results
-        if agent_action_result:
-            if agent_action_result.get("success"):
-                action = agent_action_result.get("action", "")
-                if "logged" in action:
-                    enhanced_response = f"✅ I've logged your symptom successfully.\n\n{enhanced_response}"
-                elif "history" in action:
-                    data = agent_action_result.get("data", {})
-                    count = data.get("count", 0)
-                    enhanced_response = f"📊 I found {count} symptom entries in your history.\n\n{enhanced_response}"
         
         # Add medical advice if available
         if medical_advice:
