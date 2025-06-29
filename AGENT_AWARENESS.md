@@ -674,18 +674,19 @@ CREATE TABLE public.user_medical_profiles (
   CONSTRAINT user_medical_profiles_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );
 CREATE TABLE public.user_symptoms (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
   symptom_name text NOT NULL,
   severity integer CHECK (severity >= 1 AND severity <= 10),
   description text,
-  triggers text,
+  triggers text[],
   duration_hours integer,
   location text,
+  metadata jsonb DEFAULT '{}'::jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   CONSTRAINT user_symptoms_pkey PRIMARY KEY (id),
-  CONSTRAINT user_symptoms_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  CONSTRAINT user_symptoms_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE
 );
 CREATE TABLE public.visit_symptoms (
   visit_id uuid NOT NULL,
