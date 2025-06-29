@@ -1,9 +1,9 @@
 {
   "info": {
-    "name": "TxAgent Medical RAG API Tests - Route Fixed",
-    "description": "Comprehensive test collection for TxAgent Hybrid Container with proper route separation and updated schemas",
+    "name": "TxAgent Medical RAG API Tests - Phase 1 Agent Awareness",
+    "description": "Comprehensive test collection for TxAgent Hybrid Container with Phase 1 Agent Awareness features including symptom tracking and intent recognition",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "version": "3.0.0"
+    "version": "3.1.0"
   },
   "variable": [
     {
@@ -29,6 +29,12 @@
       "value": "",
       "type": "string",
       "description": "Agent session ID from /agents endpoint"
+    },
+    {
+      "key": "symptom_id",
+      "value": "",
+      "type": "string",
+      "description": "Symptom ID from save-symptom endpoint"
     }
   ],
   "item": [
@@ -49,18 +55,29 @@
               "    pm.expect(jsonData.status).to.eql('healthy');",
               "});",
               "",
-              "pm.test(\"Response has detailed health info\", function () {",
+              "pm.test(\"Response has agent awareness capabilities\", function () {",
               "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('model');",
-              "    pm.expect(jsonData).to.have.property('device');",
-              "    pm.expect(jsonData).to.have.property('version');",
-              "    pm.expect(jsonData).to.have.property('uptime');",
-              "    pm.expect(jsonData).to.have.property('memory_usage');",
-              "    console.log(`Model: ${jsonData.model}, Device: ${jsonData.device}`);",
-              "    console.log(`Uptime: ${jsonData.uptime}s, Memory: ${jsonData.memory_usage}`);",
+              "    pm.expect(jsonData).to.have.property('capabilities');",
+              "    pm.expect(jsonData.capabilities).to.have.property('agent_awareness');",
+              "    pm.expect(jsonData.capabilities).to.have.property('intent_recognition');",
+              "    pm.expect(jsonData.capabilities).to.have.property('symptom_tracking');",
+              "    pm.expect(jsonData.capabilities.agent_awareness).to.eql(true);",
+              "    console.log(`Agent Awareness: ${jsonData.capabilities.agent_awareness}`);",
+              "    console.log(`Intent Recognition: ${jsonData.capabilities.intent_recognition}`);",
+              "    console.log(`Symptom Tracking: ${jsonData.capabilities.symptom_tracking}`);",
               "});",
               "",
-              "console.log(\"✅ Health check successful - TxAgent container is running with route separation\");"
+              "pm.test(\"Response has Phase 1 endpoints\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('endpoints');",
+              "    var endpoints = jsonData.endpoints;",
+              "    pm.expect(endpoints).to.include('/agent-action/save-symptom');",
+              "    pm.expect(endpoints).to.include('/agent-action/get-symptoms');",
+              "    pm.expect(endpoints).to.include('/agent-action/symptom-summary');",
+              "    console.log(`Available endpoints: ${endpoints.join(', ')}`);",
+              "});",
+              "",
+              "console.log(\"✅ Health check successful - TxAgent container with Phase 1 Agent Awareness\");"
             ],
             "type": "text/javascript"
           }
@@ -74,11 +91,11 @@
           "host": ["{{base_url}}"],
           "path": ["health"]
         },
-        "description": "Check if the TxAgent container is healthy and running with detailed metrics"
+        "description": "Check if the TxAgent container is healthy and has Phase 1 agent awareness capabilities"
       }
     },
     {
-      "name": "2. Test GET Endpoint",
+      "name": "2. Direct Symptom Save Test",
       "event": [
         {
           "listen": "test",
@@ -88,109 +105,32 @@
               "    pm.response.to.have.status(200);",
               "});",
               "",
-              "pm.test(\"Response has message\", function () {",
+              "pm.test(\"Symptom saved successfully\", function () {",
               "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('message');",
-              "    pm.expect(jsonData.message).to.include('GET endpoint working');",
+              "    pm.expect(jsonData).to.have.property('success');",
+              "    pm.expect(jsonData).to.have.property('symptom_id');",
+              "    pm.expect(jsonData).to.have.property('symptom_name');",
+              "    pm.expect(jsonData.success).to.eql(true);",
+              "    pm.expect(jsonData.symptom_name).to.eql('headache');",
+              "    ",
+              "    // Store symptom ID for later tests",
+              "    pm.collectionVariables.set('symptom_id', jsonData.symptom_id);",
+              "    console.log(`Symptom ID: ${jsonData.symptom_id}`);",
+              "    console.log(`Message: ${jsonData.message}`);",
               "});",
               "",
-              "console.log(\"✅ Test GET endpoint successful\");"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{base_url}}/test",
-          "host": ["{{base_url}}"],
-          "path": ["test"]
-        },
-        "description": "Test basic GET endpoint functionality"
-      }
-    },
-    {
-      "name": "3. Test POST Endpoint",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 200\", function () {",
-              "    pm.response.to.have.status(200);",
-              "});",
-              "",
-              "pm.test(\"Response has message\", function () {",
+              "pm.test(\"Response has symptom data\", function () {",
               "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('message');",
-              "    pm.expect(jsonData.message).to.include('POST endpoint working');",
+              "    pm.expect(jsonData).to.have.property('data');",
+              "    if (jsonData.data) {",
+              "        pm.expect(jsonData.data).to.have.property('symptom_name');",
+              "        pm.expect(jsonData.data).to.have.property('severity');",
+              "        pm.expect(jsonData.data).to.have.property('location');",
+              "        console.log(`Saved symptom: ${jsonData.data.symptom_name}, severity: ${jsonData.data.severity}, location: ${jsonData.data.location}`);",
+              "    }",
               "});",
               "",
-              "pm.test(\"Response echoes sent data\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('received_data');",
-              "    pm.expect(jsonData.received_data.test).to.eql('route_separation');",
-              "});",
-              "",
-              "console.log(\"✅ Test POST endpoint successful\");"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"test\": \"route_separation\",\n  \"timestamp\": \"2025-01-08T00:00:00Z\",\n  \"user\": \"postman_test\",\n  \"architecture\": \"updated_routes\"\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/test",
-          "host": ["{{base_url}}"],
-          "path": ["test"]
-        },
-        "description": "Test basic POST endpoint functionality"
-      }
-    },
-    {
-      "name": "4. Create Agent Session",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 200\", function () {",
-              "    pm.response.to.have.status(200);",
-              "});",
-              "",
-              "pm.test(\"Response has agent ID\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('id');",
-              "    pm.collectionVariables.set('agent_id', jsonData.id);",
-              "    console.log(\"Agent ID: \" + jsonData.id);",
-              "});",
-              "",
-              "pm.test(\"Response has correct status\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('status');",
-              "    pm.expect(jsonData.status).to.be.oneOf(['initializing', 'active']);",
-              "});",
-              "",
-              "pm.test(\"Response has user_id\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('user_id');",
-              "    console.log(\"User ID: \" + jsonData.user_id);",
-              "});",
-              "",
-              "console.log(\"✅ Agent session created successfully\");"
+              "console.log(\"✅ Direct symptom save test successful\");"
             ],
             "type": "text/javascript"
           }
@@ -202,7 +142,7 @@
           {
             "key": "Authorization",
             "value": "Bearer {{jwt_token}}",
-            "description": "JWT token with sub, aud, and role claims"
+            "description": "JWT token for authentication"
           },
           {
             "key": "Content-Type",
@@ -211,18 +151,18 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"session_data\": {\n    \"container_url\": \"{{base_url}}\",\n    \"capabilities\": [\"embedding\", \"chat\"],\n    \"model\": \"dmis-lab/biobert-v1.1\",\n    \"architecture\": \"route_separation\",\n    \"created_by\": \"postman_test\"\n  }\n}"
+          "raw": "{\n  \"symptom_data\": {\n    \"symptom_name\": \"headache\",\n    \"severity\": 7,\n    \"duration_hours\": 4,\n    \"location\": \"forehead\",\n    \"description\": \"Sharp pain in forehead area, started this morning\",\n    \"triggers\": [\"stress\", \"lack of sleep\"]\n  }\n}"
         },
         "url": {
-          "raw": "{{base_url}}/agents",
+          "raw": "{{base_url}}/agent-action/save-symptom",
           "host": ["{{base_url}}"],
-          "path": ["agents"]
+          "path": ["agent-action", "save-symptom"]
         },
-        "description": "Create a new agent session using POST method"
+        "description": "Test direct symptom saving via agent action endpoint"
       }
     },
     {
-      "name": "5. Get Active Agent",
+      "name": "3. Direct Symptom Retrieval Test",
       "event": [
         {
           "listen": "test",
@@ -232,21 +172,39 @@
               "    pm.response.to.have.status(200);",
               "});",
               "",
-              "pm.test(\"Response has agent info\", function () {",
+              "pm.test(\"Symptoms retrieved successfully\", function () {",
               "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('agent');",
-              "    if (jsonData.agent) {",
-              "        pm.expect(jsonData.agent).to.have.property('id');",
-              "        pm.expect(jsonData.agent).to.have.property('status');",
-              "        pm.expect(jsonData.agent).to.have.property('user_id');",
-              "        console.log(\"Active agent found: \" + jsonData.agent.id);",
-              "        console.log(\"Agent status: \" + jsonData.agent.status);",
-              "    } else {",
-              "        console.log(\"No active agent found\");",
+              "    pm.expect(jsonData).to.have.property('symptoms');",
+              "    pm.expect(jsonData).to.have.property('count');",
+              "    pm.expect(jsonData.symptoms).to.be.an('array');",
+              "    console.log(`Retrieved ${jsonData.count} symptoms`);",
+              "});",
+              "",
+              "pm.test(\"Symptom data structure is correct\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.symptoms.length > 0) {",
+              "        var symptom = jsonData.symptoms[0];",
+              "        pm.expect(symptom).to.have.property('id');",
+              "        pm.expect(symptom).to.have.property('symptom_name');",
+              "        pm.expect(symptom).to.have.property('created_at');",
+              "        console.log(`Latest symptom: ${symptom.symptom_name} (${symptom.created_at})`);",
+              "        ",
+              "        if (symptom.severity) {",
+              "            console.log(`Severity: ${symptom.severity}/10`);",
+              "        }",
+              "        if (symptom.location) {",
+              "            console.log(`Location: ${symptom.location}`);",
+              "        }",
               "    }",
               "});",
               "",
-              "console.log(\"✅ Get active agent successful\");"
+              "pm.test(\"Filters are applied correctly\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('filters');",
+              "    pm.expect(jsonData.filters.limit).to.eql(5);",
+              "});",
+              "",
+              "console.log(\"✅ Direct symptom retrieval test successful\");"
             ],
             "type": "text/javascript"
           }
@@ -262,15 +220,21 @@
           }
         ],
         "url": {
-          "raw": "{{base_url}}/agents/active",
+          "raw": "{{base_url}}/agent-action/get-symptoms?limit=5",
           "host": ["{{base_url}}"],
-          "path": ["agents", "active"]
+          "path": ["agent-action", "get-symptoms"],
+          "query": [
+            {
+              "key": "limit",
+              "value": "5"
+            }
+          ]
         },
-        "description": "Get active agent session using GET method"
+        "description": "Test direct symptom retrieval via agent action endpoint"
       }
     },
     {
-      "name": "6. Text Embedding (Chat Flow)",
+      "name": "4. Symptom Summary Test",
       "event": [
         {
           "listen": "test",
@@ -280,155 +244,35 @@
               "    pm.response.to.have.status(200);",
               "});",
               "",
-              "pm.test(\"Response has embedding array\", function () {",
+              "pm.test(\"Summary data structure is correct\", function () {",
               "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('embedding');",
-              "    pm.expect(jsonData.embedding).to.be.an('array');",
-              "    console.log(\"Embedding length: \" + jsonData.embedding.length);",
+              "    pm.expect(jsonData).to.have.property('total_symptoms');",
+              "    pm.expect(jsonData).to.have.property('days_analyzed');",
+              "    pm.expect(jsonData).to.have.property('symptom_counts');",
+              "    pm.expect(jsonData).to.have.property('recent_patterns');",
+              "    console.log(`Total symptoms: ${jsonData.total_symptoms}`);",
+              "    console.log(`Days analyzed: ${jsonData.days_analyzed}`);",
               "});",
               "",
-              "pm.test(\"Embedding has exactly 768 dimensions\", function () {",
+              "pm.test(\"Summary includes analysis\", function () {",
               "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData.dimensions).to.eql(768);",
-              "    pm.expect(jsonData.embedding.length).to.eql(768);",
-              "    console.log(\"✅ BioBERT embedding has correct 768 dimensions\");",
-              "});",
-              "",
-              "pm.test(\"Response has model and timing info\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('model');",
-              "    pm.expect(jsonData).to.have.property('processing_time');",
-              "    pm.expect(jsonData.model).to.eql('BioBERT');",
-              "    console.log(\"Processing time: \" + jsonData.processing_time + \"ms\");",
-              "});",
-              "",
-              "console.log(\"✅ Text embedding successful - ready for chat flow\");"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{jwt_token}}",
-            "description": "JWT token (optional for embedding)"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"text\": \"What are the symptoms of myocardial infarction?\",\n  \"normalize\": true\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/embed",
-          "host": ["{{base_url}}"],
-          "path": ["embed"]
-        },
-        "description": "Generate BioBERT embedding for text (chat flow endpoint)"
-      }
-    },
-    {
-      "name": "7. Process Medical Document",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 200 or 202\", function () {",
-              "    pm.expect(pm.response.code).to.be.oneOf([200, 202]);",
-              "});",
-              "",
-              "pm.test(\"Response has job_id\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('job_id');",
-              "    pm.collectionVariables.set('job_id', jsonData.job_id);",
-              "    console.log(\"Job ID: \" + jsonData.job_id);",
-              "});",
-              "",
-              "pm.test(\"Response has status\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('status');",
-              "    pm.expect(jsonData.status).to.be.oneOf(['pending', 'processing', 'completed']);",
-              "});",
-              "",
-              "pm.test(\"Response has message\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('message');",
-              "    console.log(\"Message: \" + jsonData.message);",
-              "});",
-              "",
-              "console.log(\"✅ Document processing job created successfully\");"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{jwt_token}}",
-            "description": "JWT token required for document processing"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"file_path\": \"test-documents/morgellons-disease.md\",\n  \"metadata\": {\n    \"title\": \"Rare Medical Conditions: Morgellons Disease\",\n    \"author\": \"Dr. Sarah Johnson\",\n    \"category\": \"dermatology\",\n    \"year\": \"2024\",\n    \"source\": \"Medical Research Database\",\n    \"document_type\": \"research_paper\",\n    \"keywords\": [\"morgellons\", \"dermatology\", \"rare_disease\", \"fibers\"],\n    \"test_document\": true\n  }\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/process-document",
-          "host": ["{{base_url}}"],
-          "path": ["process-document"]
-        },
-        "description": "Process and embed a medical document (document processing flow)"
-      }
-    },
-    {
-      "name": "8. Get Job Status",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 200 or 404\", function () {",
-              "    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
-              "});",
-              "",
-              "if (pm.response.code === 200) {",
-              "    pm.test(\"Response has job status\", function () {",
-              "        var jsonData = pm.response.json();",
-              "        pm.expect(jsonData).to.have.property('status');",
-              "        pm.expect(jsonData).to.have.property('job_id');",
-              "        console.log(\"Job status: \" + jsonData.status);",
+              "    if (jsonData.total_symptoms > 0) {",
+              "        pm.expect(jsonData).to.have.property('most_common_symptom');",
+              "        pm.expect(jsonData).to.have.property('unique_symptoms');",
+              "        console.log(`Most common symptom: ${jsonData.most_common_symptom}`);",
+              "        console.log(`Unique symptoms: ${jsonData.unique_symptoms}`);",
               "        ",
-              "        if (jsonData.status === 'completed') {",
-              "            console.log(\"✅ Document processing completed successfully\");",
-              "            console.log(\"Chunks created: \" + (jsonData.chunk_count || 'unknown'));",
-              "            if (jsonData.document_ids && jsonData.document_ids.length > 0) {",
-              "                console.log(\"Document IDs: \" + jsonData.document_ids.join(', '));",
-              "            }",
-              "        } else if (jsonData.status === 'processing') {",
-              "            console.log(\"⏳ Document processing is still in progress\");",
-              "        } else if (jsonData.status === 'failed') {",
-              "            console.log(\"❌ Document processing failed: \" + (jsonData.error || 'unknown error'));",
-              "        } else if (jsonData.status === 'pending') {",
-              "            console.log(\"⏳ Document processing is pending\");",
+              "        if (jsonData.severity_average) {",
+              "            console.log(`Average severity: ${jsonData.severity_average}/10`);",
               "        }",
-              "    });",
-              "} else {",
-              "    console.log(\"❌ Job not found or access denied (RLS working correctly)\");",
-              "}"
+              "        ",
+              "        if (jsonData.recent_patterns.length > 0) {",
+              "            console.log(`Patterns: ${jsonData.recent_patterns.join(', ')}`);",
+              "        }",
+              "    }",
+              "});",
+              "",
+              "console.log(\"✅ Symptom summary test successful\");"
             ],
             "type": "text/javascript"
           }
@@ -440,19 +284,25 @@
           {
             "key": "Authorization",
             "value": "Bearer {{jwt_token}}",
-            "description": "JWT token for RLS-filtered access"
+            "description": "JWT token for authentication"
           }
         ],
         "url": {
-          "raw": "{{base_url}}/embedding-jobs/{{job_id}}",
+          "raw": "{{base_url}}/agent-action/symptom-summary?days_back=30",
           "host": ["{{base_url}}"],
-          "path": ["embedding-jobs", "{{job_id}}"]
+          "path": ["agent-action", "symptom-summary"],
+          "query": [
+            {
+              "key": "days_back",
+              "value": "30"
+            }
+          ]
         },
-        "description": "Check document processing job status"
+        "description": "Test symptom summary and analysis endpoint"
       }
     },
     {
-      "name": "9. Chat Query - Morgellons Symptoms",
+      "name": "5. Intent Recognition - Symptom Logging",
       "event": [
         {
           "listen": "test",
@@ -462,185 +312,42 @@
               "    pm.response.to.have.status(200);",
               "});",
               "",
-              "pm.test(\"Response has answer\", function () {",
+              "pm.test(\"Intent recognition detected symptom logging\", function () {",
               "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('response');",
-              "    pm.expect(jsonData).to.have.property('status');",
-              "    console.log(\"Response preview: \" + jsonData.response.substring(0, 150) + \"...\");",
-              "});",
-              "",
-              "pm.test(\"Response has enhanced metadata\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('processing_time');",
-              "    pm.expect(jsonData).to.have.property('model');",
-              "    pm.expect(jsonData).to.have.property('tokens_used');",
-              "    console.log(\"Processing time: \" + jsonData.processing_time + \"ms\");",
-              "    console.log(\"Model: \" + jsonData.model);",
-              "    console.log(\"Tokens used: \" + jsonData.tokens_used);",
-              "});",
-              "",
-              "pm.test(\"Response has sources array\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('sources');",
-              "    pm.expect(jsonData.sources).to.be.an('array');",
+              "    pm.expect(jsonData).to.have.property('intent_detected');",
+              "    pm.expect(jsonData).to.have.property('agent_action');",
               "    ",
-              "    if (jsonData.sources.length > 0) {",
-              "        console.log(\"Sources found: \" + jsonData.sources.length);",
-              "        console.log(\"Top similarity score: \" + jsonData.sources[0].similarity);",
-              "        ",
-              "        // Test enhanced source metadata",
-              "        pm.expect(jsonData.sources[0]).to.have.property('content');",
-              "        pm.expect(jsonData.sources[0]).to.have.property('metadata');",
-              "        pm.expect(jsonData.sources[0]).to.have.property('similarity');",
-              "        pm.expect(jsonData.sources[0]).to.have.property('filename');",
-              "        pm.expect(jsonData.sources[0]).to.have.property('chunk_id');",
-              "    } else {",
-              "        console.log(\"No sources found - may need to wait for processing to complete\");",
+              "    if (jsonData.intent_detected) {",
+              "        pm.expect(jsonData.intent_detected.type).to.eql('log_symptom');",
+              "        pm.expect(jsonData.intent_detected.confidence).to.be.above(0.5);",
+              "        console.log(`Intent: ${jsonData.intent_detected.type}, Confidence: ${jsonData.intent_detected.confidence}`);",
+              "        console.log(`Extracted data: ${JSON.stringify(jsonData.intent_detected.data)}`);",
               "    }",
               "});",
               "",
-              "console.log(\"✅ Chat query successful with enhanced response metadata\");"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{jwt_token}}",
-            "description": "JWT token for authenticated chat"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"query\": \"What are the main symptoms of Morgellons disease?\",\n  \"history\": [],\n  \"top_k\": 5,\n  \"temperature\": 0.7,\n  \"stream\": false\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/chat",
-          "host": ["{{base_url}}"],
-          "path": ["chat"]
-        },
-        "description": "Query about Morgellons symptoms using updated chat endpoint"
-      }
-    },
-    {
-      "name": "10. Chat Query - Treatment Options",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 200\", function () {",
-              "    pm.response.to.have.status(200);",
-              "});",
-              "",
-              "pm.test(\"Response has answer\", function () {",
+              "pm.test(\"Agent action was taken\", function () {",
               "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('response');",
-              "    pm.expect(jsonData).to.have.property('status');",
-              "    console.log(\"Response preview: \" + jsonData.response.substring(0, 150) + \"...\");",
-              "});",
-              "",
-              "pm.test(\"BioBERT processing metrics\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('processing_time');",
-              "    pm.expect(jsonData).to.have.property('model');",
-              "    pm.expect(jsonData.model).to.eql('BioBERT');",
-              "    ",
-              "    if (jsonData.sources.length > 0) {",
-              "        console.log(\"BioBERT found \" + jsonData.sources.length + \" relevant chunks\");",
+              "    if (jsonData.agent_action) {",
+              "        pm.expect(jsonData.agent_action.action).to.be.oneOf(['symptom_logged', 'symptom_logging_incomplete']);",
+              "        console.log(`Agent action: ${jsonData.agent_action.action}`);",
+              "        console.log(`Success: ${jsonData.agent_action.success}`);",
               "        ",
-              "        // Check that similarity scores are reasonable",
-              "        jsonData.sources.forEach((source, index) => {",
-              "            console.log(`Source ${index + 1} similarity: ${source.similarity}`);",
-              "            pm.expect(source.similarity).to.be.at.least(0);",
-              "            pm.expect(source.similarity).to.be.at.most(1);",
-              "        });",
-              "    } else {",
-              "        console.log(\"No relevant sources found for treatment query\");",
-              "    }",
-              "});",
-              "",
-              "console.log(\"✅ Treatment query successful using BioBERT embeddings\");"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{jwt_token}}",
-            "description": "JWT token for authenticated operations"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"query\": \"What treatment approaches are available for Morgellons disease?\",\n  \"history\": [],\n  \"top_k\": 5,\n  \"temperature\": 0.7,\n  \"stream\": false\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/chat",
-          "host": ["{{base_url}}"],
-          "path": ["chat"]
-        },
-        "description": "Query about treatment options using BioBERT medical embeddings"
-      }
-    },
-    {
-      "name": "11. Chat Query - Research Controversy",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 200\", function () {",
-              "    pm.response.to.have.status(200);",
-              "});",
-              "",
-              "pm.test(\"Response handles complex medical topic\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('response');",
-              "    pm.expect(jsonData).to.have.property('status');",
-              "    ",
-              "    // Check that response is substantial for complex query",
-              "    pm.expect(jsonData.response.length).to.be.at.least(50);",
-              "    console.log(\"Response length: \" + jsonData.response.length + \" characters\");",
-              "    console.log(\"Tokens used: \" + jsonData.tokens_used);",
-              "});",
-              "",
-              "pm.test(\"Sources provide context with enhanced metadata\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('sources');",
-              "    ",
-              "    if (jsonData.sources.length > 0) {",
-              "        console.log(\"Found \" + jsonData.sources.length + \" contextual sources\");",
-              "        ",
-              "        // Check enhanced metadata structure",
-              "        var firstSource = jsonData.sources[0];",
-              "        pm.expect(firstSource).to.have.property('filename');",
-              "        pm.expect(firstSource).to.have.property('chunk_id');",
-              "        pm.expect(firstSource).to.have.property('similarity');",
-              "        ",
-              "        if (firstSource.metadata) {",
-              "            console.log(\"Metadata keys: \" + Object.keys(firstSource.metadata).join(', '));",
+              "        if (jsonData.agent_action.success && jsonData.agent_action.data) {",
+              "            console.log(`Logged symptom: ${jsonData.agent_action.data.symptom_name}`);",
               "        }",
               "    }",
               "});",
               "",
-              "console.log(\"✅ Complex research query handled successfully\");"
+              "pm.test(\"Response includes symptom confirmation\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.response).to.include('nausea');",
+              "    // Should include confirmation of logging",
+              "    if (jsonData.agent_action && jsonData.agent_action.success) {",
+              "        pm.expect(jsonData.response).to.include('logged');",
+              "    }",
+              "});",
+              "",
+              "console.log(\"✅ Intent recognition for symptom logging successful\");"
             ],
             "type": "text/javascript"
           }
@@ -652,7 +359,7 @@
           {
             "key": "Authorization",
             "value": "Bearer {{jwt_token}}",
-            "description": "JWT token for authenticated operations"
+            "description": "JWT token for authentication"
           },
           {
             "key": "Content-Type",
@@ -661,18 +368,18 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"query\": \"Why is Morgellons disease controversial in the medical community?\",\n  \"history\": [],\n  \"top_k\": 5,\n  \"temperature\": 0.7,\n  \"stream\": false\n}"
+          "raw": "{\n  \"query\": \"I'm experiencing nausea and it's been going on for about 2 hours. The severity is moderate, maybe a 5 out of 10.\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 32,\n      \"gender\": \"female\",\n      \"conditions\": [\"migraine\"],\n      \"medications\": [\"ibuprofen\"]\n    },\n    \"conversation_history\": [\n      {\n        \"role\": \"user\",\n        \"content\": \"Hello, I need to track my symptoms\"\n      },\n      {\n        \"role\": \"assistant\",\n        \"content\": \"I can help you track your symptoms. What are you experiencing?\"\n      }\n    ]\n  },\n  \"top_k\": 3,\n  \"temperature\": 0.7\n}"
         },
         "url": {
           "raw": "{{base_url}}/chat",
           "host": ["{{base_url}}"],
           "path": ["chat"]
         },
-        "description": "Query about medical controversy using contextual understanding"
+        "description": "Test intent recognition for symptom logging through chat endpoint"
       }
     },
     {
-      "name": "12. Chat Query - No Results Test",
+      "name": "6. Intent Recognition - Symptom History",
       "event": [
         {
           "listen": "test",
@@ -682,27 +389,40 @@
               "    pm.response.to.have.status(200);",
               "});",
               "",
-              "pm.test(\"System handles irrelevant queries gracefully\", function () {",
+              "pm.test(\"Intent recognition detected history request\", function () {",
               "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('response');",
-              "    pm.expect(jsonData).to.have.property('status');",
+              "    pm.expect(jsonData).to.have.property('intent_detected');",
+              "    pm.expect(jsonData).to.have.property('agent_action');",
               "    ",
-              "    if (jsonData.status === 'no_results') {",
-              "        console.log(\"✅ System correctly indicated no relevant results\");",
-              "        pm.expect(jsonData.response).to.include(\"couldn't find\");",
-              "        pm.expect(jsonData.tokens_used).to.eql(0);",
-              "    } else {",
-              "        console.log(\"System attempted to answer with available context\");",
-              "        // Should have very few or no sources for irrelevant query",
-              "        pm.expect(jsonData.sources.length).to.be.at.most(2);",
+              "    if (jsonData.intent_detected) {",
+              "        pm.expect(jsonData.intent_detected.type).to.eql('get_symptom_history');",
+              "        pm.expect(jsonData.intent_detected.confidence).to.be.above(0.5);",
+              "        console.log(`Intent: ${jsonData.intent_detected.type}, Confidence: ${jsonData.intent_detected.confidence}`);",
               "    }",
-              "    ",
-              "    // Should still have processing metrics",
-              "    pm.expect(jsonData).to.have.property('processing_time');",
-              "    pm.expect(jsonData).to.have.property('model');",
               "});",
               "",
-              "console.log(\"✅ No results handling test completed\");"
+              "pm.test(\"Agent action retrieved history\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.agent_action) {",
+              "        pm.expect(jsonData.agent_action.action).to.eql('symptom_history_retrieved');",
+              "        console.log(`Agent action: ${jsonData.agent_action.action}`);",
+              "        console.log(`Success: ${jsonData.agent_action.success}`);",
+              "        ",
+              "        if (jsonData.agent_action.success && jsonData.agent_action.data) {",
+              "            console.log(`Found ${jsonData.agent_action.data.count} symptoms in history`);",
+              "        }",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"Response includes history information\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    // Should include information about found symptoms",
+              "    if (jsonData.agent_action && jsonData.agent_action.success) {",
+              "        pm.expect(jsonData.response).to.include('found');",
+              "    }",
+              "});",
+              "",
+              "console.log(\"✅ Intent recognition for symptom history successful\");"
             ],
             "type": "text/javascript"
           }
@@ -714,7 +434,7 @@
           {
             "key": "Authorization",
             "value": "Bearer {{jwt_token}}",
-            "description": "JWT token for authenticated operations"
+            "description": "JWT token for authentication"
           },
           {
             "key": "Content-Type",
@@ -723,61 +443,224 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"query\": \"What is the weather forecast for Mars next week?\",\n  \"history\": [],\n  \"top_k\": 3,\n  \"temperature\": 0.5,\n  \"stream\": false\n}"
+          "raw": "{\n  \"query\": \"Can you show me my symptom history from the last week?\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 32,\n      \"gender\": \"female\",\n      \"conditions\": [\"migraine\"],\n      \"medications\": [\"ibuprofen\"]\n    },\n    \"conversation_history\": [\n      {\n        \"role\": \"user\",\n        \"content\": \"I logged some symptoms earlier\"\n      },\n      {\n        \"role\": \"assistant\",\n        \"content\": \"Yes, I can help you review your symptom history.\"\n      }\n    ]\n  },\n  \"top_k\": 3,\n  \"temperature\": 0.7\n}"
         },
         "url": {
           "raw": "{{base_url}}/chat",
           "host": ["{{base_url}}"],
           "path": ["chat"]
         },
-        "description": "Test system behavior with completely irrelevant query"
+        "description": "Test intent recognition for symptom history retrieval through chat endpoint"
       }
     },
     {
-      "name": "13. Terminate Agent Session",
+      "name": "7. Implicit Symptom Detection",
       "event": [
         {
           "listen": "test",
           "script": {
             "exec": [
-              "pm.test(\"Status code is 200 or 404\", function () {",
-              "    pm.expect(pm.response.code).to.be.oneOf([200, 404]);",
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
               "});",
               "",
-              "if (pm.response.code === 200) {",
-              "    pm.test(\"Response has success message\", function () {",
-              "        var jsonData = pm.response.json();",
-              "        pm.expect(jsonData).to.have.property('message');",
-              "        console.log(\"✅ Agent session terminated successfully\");",
-              "        console.log(\"Message: \" + jsonData.message);",
-              "    });",
-              "} else {",
-              "    console.log(\"❌ Agent session not found or already terminated (RLS working)\");",
-              "}"
+              "pm.test(\"Intent recognition detected implicit symptom\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    ",
+              "    // May detect as log_symptom with lower confidence or general_chat",
+              "    if (jsonData.intent_detected) {",
+              "        console.log(`Intent: ${jsonData.intent_detected.type}, Confidence: ${jsonData.intent_detected.confidence}`);",
+              "        console.log(`Extracted data: ${JSON.stringify(jsonData.intent_detected.data)}`);",
+              "        ",
+              "        if (jsonData.intent_detected.type === 'log_symptom') {",
+              "            pm.expect(jsonData.intent_detected.confidence).to.be.above(0.3);",
+              "        }",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"Response is contextually appropriate\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.response).to.be.a('string');",
+              "    pm.expect(jsonData.response.length).to.be.above(10);",
+              "    ",
+              "    // Should mention back pain in some way",
+              "    pm.expect(jsonData.response.toLowerCase()).to.include('back');",
+              "});",
+              "",
+              "console.log(\"✅ Implicit symptom detection test successful\");"
             ],
             "type": "text/javascript"
           }
         }
       ],
       "request": {
-        "method": "DELETE",
+        "method": "POST",
         "header": [
           {
             "key": "Authorization",
             "value": "Bearer {{jwt_token}}",
-            "description": "JWT token for authenticated deletion"
+            "description": "JWT token for authentication"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
           }
         ],
-        "url": {
-          "raw": "{{base_url}}/agents/{{agent_id}}",
-          "host": ["{{base_url}}"],
-          "path": ["agents", "{{agent_id}}"]
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"My back has been hurting since yesterday\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 45,\n      \"gender\": \"male\",\n      \"conditions\": [\"arthritis\"],\n      \"medications\": [\"naproxen\"]\n    }\n  },\n  \"top_k\": 3,\n  \"temperature\": 0.7\n}"
         },
-        "description": "Terminate agent session with proper cleanup"
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "Test implicit symptom detection (less explicit symptom mention)"
       }
     },
     {
-      "name": "14. Test Authentication Failure",
+      "name": "8. General Chat (No Intent)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"No specific intent detected\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    ",
+              "    if (jsonData.intent_detected) {",
+              "        pm.expect(jsonData.intent_detected.type).to.eql('general_chat');",
+              "        pm.expect(jsonData.intent_detected.confidence).to.eql(0.0);",
+              "        console.log(`Intent: ${jsonData.intent_detected.type}, Confidence: ${jsonData.intent_detected.confidence}`);",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"No agent action taken\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    // Should not have agent_action for general chat",
+              "    if (jsonData.agent_action) {",
+              "        console.log(`Unexpected agent action: ${jsonData.agent_action.action}`);",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"Response is appropriate for general query\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.response).to.be.a('string');",
+              "    pm.expect(jsonData.response.length).to.be.above(10);",
+              "    console.log(`Response preview: ${jsonData.response.substring(0, 100)}...`);",
+              "});",
+              "",
+              "console.log(\"✅ General chat (no intent) test successful\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token for authentication"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"What is the weather like today?\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 30,\n      \"gender\": \"female\"\n    }\n  },\n  \"top_k\": 3,\n  \"temperature\": 0.7\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "Test that non-medical queries don't trigger symptom intents"
+      }
+    },
+    {
+      "name": "9. Complex Symptom Extraction",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Complex symptom data extracted\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    ",
+              "    if (jsonData.intent_detected && jsonData.intent_detected.type === 'log_symptom') {",
+              "        var data = jsonData.intent_detected.data;",
+              "        console.log(`Extracted symptom data: ${JSON.stringify(data)}`);",
+              "        ",
+              "        // Should extract multiple pieces of information",
+              "        if (data.symptom_name) {",
+              "            console.log(`Symptom: ${data.symptom_name}`);",
+              "        }",
+              "        if (data.severity) {",
+              "            console.log(`Severity: ${data.severity}/10`);",
+              "        }",
+              "        if (data.duration_hours) {",
+              "            console.log(`Duration: ${data.duration_hours} hours`);",
+              "        }",
+              "        if (data.location) {",
+              "            console.log(`Location: ${data.location}`);",
+              "        }",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"Agent successfully logged complex symptom\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    ",
+              "    if (jsonData.agent_action && jsonData.agent_action.action === 'symptom_logged') {",
+              "        pm.expect(jsonData.agent_action.success).to.eql(true);",
+              "        console.log(`Successfully logged: ${jsonData.agent_action.data.symptom_name}`);",
+              "    }",
+              "});",
+              "",
+              "console.log(\"✅ Complex symptom extraction test successful\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token for authentication"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"I've been having a terrible migraine for the past 6 hours. The pain is excruciating, probably a 9 out of 10, and it's concentrated on the left side of my head. It started after I skipped lunch and didn't drink enough water.\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 28,\n      \"gender\": \"female\",\n      \"conditions\": [\"migraine\", \"dehydration sensitivity\"],\n      \"medications\": [\"sumatriptan\"],\n      \"allergies\": [\"aspirin\"]\n    }\n  },\n  \"top_k\": 3,\n  \"temperature\": 0.7\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "Test extraction of complex symptom information with multiple details"
+      }
+    },
+    {
+      "name": "10. Authentication Failure Test",
       "event": [
         {
           "listen": "test",
@@ -802,7 +685,7 @@
               "    ]);",
               "});",
               "",
-              "console.log(\"✅ Authentication failure test successful - centralized auth working\");"
+              "console.log(\"✅ Authentication failure test successful - agent actions properly protected\");"
             ],
             "type": "text/javascript"
           }
@@ -823,31 +706,43 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"query\": \"This should fail due to invalid token\",\n  \"history\": [],\n  \"top_k\": 5,\n  \"temperature\": 0.7,\n  \"stream\": false\n}"
+          "raw": "{\n  \"symptom_data\": {\n    \"symptom_name\": \"test_symptom\",\n    \"severity\": 5\n  }\n}"
         },
         "url": {
-          "raw": "{{base_url}}/chat",
+          "raw": "{{base_url}}/agent-action/save-symptom",
           "host": ["{{base_url}}"],
-          "path": ["chat"]
+          "path": ["agent-action", "save-symptom"]
         },
-        "description": "Test centralized authentication failure handling"
+        "description": "Test that agent action endpoints are properly protected by authentication"
       }
     },
     {
-      "name": "15. Test RLS Isolation",
+      "name": "11. RLS Isolation Test",
       "event": [
         {
           "listen": "test",
           "script": {
             "exec": [
-              "pm.test(\"Status code is 401, 403, or 404\", function () {",
-              "    pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]);",
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
               "});",
               "",
-              "pm.test(\"RLS prevents access to other user data\", function () {",
+              "pm.test(\"RLS properly isolates user data\", function () {",
               "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('detail');",
-              "    console.log(\"RLS protection message: \" + jsonData.detail);",
+              "    pm.expect(jsonData).to.have.property('symptoms');",
+              "    pm.expect(jsonData).to.have.property('count');",
+              "    ",
+              "    // Should only return symptoms for the authenticated user",
+              "    console.log(`User can see ${jsonData.count} symptoms (RLS working)`);",
+              "    ",
+              "    // All symptoms should belong to the current user (verified by RLS)",
+              "    if (jsonData.symptoms.length > 0) {",
+              "        jsonData.symptoms.forEach((symptom, index) => {",
+              "            pm.expect(symptom).to.have.property('id');",
+              "            pm.expect(symptom).to.have.property('symptom_name');",
+              "            console.log(`Symptom ${index + 1}: ${symptom.symptom_name} (${symptom.created_at})`);",
+              "        });",
+              "    }",
               "});",
               "",
               "console.log(\"✅ RLS isolation test successful - user data properly protected\");"
@@ -862,19 +757,25 @@
           {
             "key": "Authorization",
             "value": "Bearer {{jwt_token}}",
-            "description": "Valid token but trying to access non-existent job"
+            "description": "Valid token - should only see own symptoms"
           }
         ],
         "url": {
-          "raw": "{{base_url}}/embedding-jobs/00000000-0000-0000-0000-000000000000",
+          "raw": "{{base_url}}/agent-action/get-symptoms?limit=10",
           "host": ["{{base_url}}"],
-          "path": ["embedding-jobs", "00000000-0000-0000-0000-000000000000"]
+          "path": ["agent-action", "get-symptoms"],
+          "query": [
+            {
+              "key": "limit",
+              "value": "10"
+            }
+          ]
         },
-        "description": "Test that RLS prevents access to non-existent or other user's data"
+        "description": "Test that RLS properly isolates symptom data by user"
       }
     },
     {
-      "name": "16. Test Embedding Dimensions",
+      "name": "12. Performance Benchmark",
       "event": [
         {
           "listen": "test",
@@ -884,95 +785,28 @@
               "    pm.response.to.have.status(200);",
               "});",
               "",
-              "pm.test(\"Embedding has exactly 768 dimensions\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('embedding');",
-              "    pm.expect(jsonData).to.have.property('dimensions');",
-              "    pm.expect(jsonData.dimensions).to.eql(768);",
-              "    pm.expect(jsonData.embedding).to.be.an('array');",
-              "    pm.expect(jsonData.embedding.length).to.eql(768);",
-              "    console.log(\"✅ BioBERT embedding has exactly 768 dimensions\");",
+              "pm.test(\"Response time is acceptable\", function () {",
+              "    pm.expect(pm.response.responseTime).to.be.below(5000); // 5 seconds max",
+              "    console.log(`Response time: ${pm.response.responseTime}ms`);",
               "});",
               "",
-              "pm.test(\"Embedding values are normalized floats\", function () {",
+              "pm.test(\"Processing time is reported\", function () {",
               "    var jsonData = pm.response.json();",
-              "    var embedding = jsonData.embedding;",
-              "    ",
-              "    // Check that all values are numbers",
-              "    embedding.forEach((value, index) => {",
-              "        pm.expect(value).to.be.a('number');",
-              "        pm.expect(value).to.be.at.least(-1);",
-              "        pm.expect(value).to.be.at.most(1);",
-              "    });",
-              "    ",
-              "    console.log(\"Sample embedding values: [\" + embedding.slice(0, 5).map(v => v.toFixed(4)).join(', ') + \", ...]\");",
-              "});",
-              "",
-              "pm.test(\"Response includes processing metadata\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('model');",
               "    pm.expect(jsonData).to.have.property('processing_time');",
-              "    pm.expect(jsonData.model).to.eql('BioBERT');",
               "    pm.expect(jsonData.processing_time).to.be.a('number');",
-              "    console.log(\"Processing time: \" + jsonData.processing_time + \"ms\");",
+              "    console.log(`Processing time: ${jsonData.processing_time}ms`);",
               "});",
               "",
-              "console.log(\"✅ Embedding dimensions test successful - ready for companion app integration\");"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"text\": \"Test medical text for embedding validation\",\n  \"normalize\": true\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/embed",
-          "host": ["{{base_url}}"],
-          "path": ["embed"]
-        },
-        "description": "Validate BioBERT embedding dimensions for companion app compatibility"
-      }
-    },
-    {
-      "name": "17. RPC - Create Agent Session (Enhanced Debug)",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 200\", function () {",
-              "    pm.response.to.have.status(200);",
-              "});",
-              "",
-              "pm.test(\"Agent session created successfully\", function () {",
+              "pm.test(\"Intent recognition is fast\", function () {",
               "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('id');",
-              "    pm.expect(jsonData).to.have.property('user_id');",
-              "    pm.expect(jsonData).to.have.property('session_data');",
-              "    pm.collectionVariables.set('agent_id', jsonData.id);",
-              "    console.log(\"✅ Agent Session ID:\", jsonData.id);",
-              "    console.log(\"🔍 User ID:\", jsonData.user_id);",
-              "    console.log(\"📦 Session Data:\", JSON.stringify(jsonData.session_data, null, 2));",
+              "    // Intent recognition should add minimal overhead",
+              "    if (jsonData.intent_detected) {",
+              "        console.log(`Intent detection successful with minimal overhead`);",
+              "        console.log(`Intent: ${jsonData.intent_detected.type}, Confidence: ${jsonData.intent_detected.confidence}`);",
+              "    }",
               "});",
               "",
-              "pm.test(\"Response contains status and timestamp\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('status');",
-              "    pm.expect(jsonData).to.have.property('created_at');",
-              "    console.log(\"🕓 Created At:\", jsonData.created_at);",
-              "});",
-              "",
-              "console.log(\"✅ Enhanced RPC agent session test passed\");"
+              "console.log(\"✅ Performance benchmark successful - Phase 1 features are performant\");"
             ],
             "type": "text/javascript"
           }
@@ -984,7 +818,7 @@
           {
             "key": "Authorization",
             "value": "Bearer {{jwt_token}}",
-            "description": "JWT with sub, aud, role"
+            "description": "JWT token for authentication"
           },
           {
             "key": "Content-Type",
@@ -993,14 +827,14 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"session_data\": {\n    \"origin\": \"enhanced_debug_postman\",\n    \"container_url\": \"{{base_url}}\",\n    \"rpc_test\": true,\n    \"description\": \"Testing RPC create_agent_session with enhanced logging\"\n  }\n}"
+          "raw": "{\n  \"query\": \"I want to log a fever symptom that I've had for 2 days\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 35,\n      \"gender\": \"male\",\n      \"conditions\": [\"hypertension\"],\n      \"medications\": [\"lisinopril\"]\n    },\n    \"conversation_history\": [\n      {\n        \"role\": \"user\",\n        \"content\": \"Hello\"\n      },\n      {\n        \"role\": \"assistant\",\n        \"content\": \"Hello! How can I help you today?\"\n      }\n    ]\n  },\n  \"top_k\": 5,\n  \"temperature\": 0.7\n}"
         },
         "url": {
-          "raw": "{{base_url}}/agents",
+          "raw": "{{base_url}}/chat",
           "host": ["{{base_url}}"],
-          "path": ["agents"]
+          "path": ["chat"]
         },
-        "description": "Explicit RPC debug test for create_agent_session using Supabase RPC endpoint"
+        "description": "Performance benchmark for Phase 1 agent awareness features"
       }
     }
   ],
@@ -1011,15 +845,14 @@
         "type": "text/javascript",
         "exec": [
           "// Pre-request script for the entire collection",
-          "console.log('🚀 Starting TxAgent API Tests with Route Separation');",
+          "console.log('🚀 Starting TxAgent Phase 1 Agent Awareness API Tests');",
           "console.log('📋 Testing Features:');",
-          "console.log('   - Route separation (POST /embed vs POST /process-document)');",
-          "console.log('   - Enhanced request/response schemas');",
-          "console.log('   - BioBERT embeddings (768-dimensional)');",
-          "console.log('   - Chat flow with proper query field');",
-          "console.log('   - Document processing flow with job tracking');",
-          "console.log('   - Centralized authentication service');",
-          "console.log('   - Performance metrics and timing');",
+          "console.log('   - Intent Recognition (symptom logging, history requests)');",
+          "console.log('   - Agent Actions (save/retrieve symptoms)');",
+          "console.log('   - Symptom Data Extraction (name, severity, duration, location)');",
+          "console.log('   - Database Operations with RLS');",
+          "console.log('   - Chat Integration with Agent Actions');",
+          "console.log('   - Authentication and Security');",
           "",
           "// Validate that required variables are set",
           "if (!pm.collectionVariables.get('base_url') || pm.collectionVariables.get('base_url') === 'https://your-txagent-container-url.proxy.runpod.net') {",

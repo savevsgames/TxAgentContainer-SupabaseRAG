@@ -11,6 +11,7 @@ import uuid
 import time
 import psutil
 import torch
+import json
 
 from embedder import Embedder
 from llm import LLMHandler
@@ -18,6 +19,10 @@ from llm import LLMHandler
 # Import from centralized auth service
 from core.auth_service import auth_service, get_user_id, get_auth_token, validate_token
 from core.logging import request_logger, log_request
+
+# Import new agent awareness components
+from intent_recognition import IntentRecognizer
+from agent_actions import agent_actions
 
 # Load environment variables
 load_dotenv()
@@ -34,14 +39,15 @@ request_logger.log_system_event("startup", {
     "model": os.getenv("MODEL_NAME", "dmis-lab/biobert-v1.1"),
     "device": os.getenv("DEVICE", "cuda"),
     "port": os.getenv("PORT", "8000"),
-    "log_level": os.getenv("LOG_LEVEL", "INFO")
+    "log_level": os.getenv("LOG_LEVEL", "INFO"),
+    "agent_awareness": True
 })
 
 # Initialize FastAPI app
 app = FastAPI(
     title="TxAgent Hybrid Container",
-    description="Medical RAG Vector Uploader with BioBERT embeddings and chat capabilities",
-    version="1.0.0"
+    description="Medical RAG Vector Uploader with BioBERT embeddings, chat capabilities, and agent awareness",
+    version="1.1.0"
 )
 
 # Add CORS middleware with extensive logging
@@ -67,6 +73,14 @@ try:
 except Exception as e:
     request_logger.log_system_event("model_load", {"status": "failed", "error": str(e)}, level="warning")
     llm_handler = None
+
+# Initialize intent recognizer for agent awareness
+try:
+    intent_recognizer = IntentRecognizer()
+    request_logger.log_system_event("intent_recognition_load", {"status": "success"})
+except Exception as e:
+    request_logger.log_system_event("intent_recognition_load", {"status": "failed", "error": str(e)}, level="error")
+    intent_recognizer = None
 
 # Track startup time for uptime calculation
 startup_time = time.time()
@@ -113,6 +127,8 @@ class ChatResponse(BaseModel):
     model: str = Field("BioBERT", description="Model used for processing")
     tokens_used: Optional[int] = Field(None, description="Number of tokens used in processing")
     status: str = Field("success", description="Status of the request")
+    agent_action: Optional[Dict[str, Any]] = Field(None, description="Agent action taken if any")
+    intent_detected: Optional[Dict[str, Any]] = Field(None, description="Intent detection results")
 
 class AgentSessionRequest(BaseModel):
     session_data: Dict[str, Any] = {}
@@ -129,7 +145,7 @@ class HealthResponse(BaseModel):
     status: str = "healthy"
     model: str = os.getenv("MODEL_NAME", "dmis-lab/biobert-v1.1")
     device: str = os.getenv("DEVICE", "cuda")
-    version: str = "1.0.0"
+    version: str = "1.1.0"
     uptime: Optional[int] = None
     memory_usage: Optional[str] = None
 
@@ -268,6 +284,24 @@ def test_rpc(authorization: Optional[str] = Header(None)):
     except Exception as e:
         return {"error": str(e)}
 
+# Agent Action Endpoints for Phase 1
+@app.post("/agent-action/save-symptom")
+async def save_symptom_endpoint(request: Request):
+    """Save a symptom to the user's profile."""
+    logger.info("🚀 AGENT_ACTION: Save symptom endpoint called")
+    return await agent_actions.save_symptom(request)
+
+@app.get("/agent-action/get-symptoms")
+async def get_symptoms_endpoint(request: Request):
+    """Get user's symptom history."""
+    logger.info("🚀 AGENT_ACTION: Get symptoms endpoint called")
+    return await agent_actions.get_symptoms(request)
+
+@app.get("/agent-action/symptom-summary")
+async def get_symptom_summary_endpoint(request: Request):
+    """Get user's symptom summary and patterns."""
+    logger.info("🚀 AGENT_ACTION: Get symptom summary endpoint called")
+    return await agent_actions.get_symptom_summary(request)
 
 @app.post("/embed", response_model=EmbedResponse)
 @log_request("/embed")
@@ -436,7 +470,8 @@ async def chat(
     
     This endpoint performs similarity search to find relevant documents,
     then generates a response using an LLM based on the query and context.
-    Now enhanced to utilize user profile and conversation history for personalized responses.
+    Now enhanced to utilize user profile and conversation history for personalized responses,
+    and includes intent recognition for agent actions like symptom logging.
     """
     logger.info(f"🚀 CHAT REQUEST: {request.query[:50]}...")
     
@@ -462,12 +497,122 @@ async def chat(
         else:
             logger.info("ℹ️ CHAT: No context provided - using query only")
         
+        # PHASE 1: Intent Recognition
+        intent_type = "general_chat"
+        intent_confidence = 0.0
+        intent_data = {}
+        agent_action_result = None
+        
+        if intent_recognizer:
+            intent_type, intent_confidence, intent_data = intent_recognizer.detect_intent(
+                request.query, 
+                conversation_history
+            )
+            
+            logger.info(f"🔍 INTENT: Detected '{intent_type}' with confidence {intent_confidence}")
+            
+            # Handle symptom logging intent
+            if intent_type == "log_symptom" and intent_confidence > 0.5:
+                if intent_data.get("symptom_name"):
+                    # We have enough data to log the symptom
+                    try:
+                        logger.info(f"🔍 INTENT: Attempting to log symptom: {intent_data}")
+                        
+                        # Create a mock request for the agent action
+                        class MockRequest:
+                            def __init__(self, headers, json_data):
+                                self.headers = headers
+                                self._json_data = json_data
+                            
+                            async def json(self):
+                                return self._json_data
+                        
+                        mock_request = MockRequest(
+                            headers={'Authorization': authorization},
+                            json_data={"symptom_data": intent_data}
+                        )
+                        
+                        save_result = await agent_actions.save_symptom(mock_request)
+                        
+                        if save_result.status_code == 200:
+                            result_data = json.loads(save_result.body.decode())
+                            agent_action_result = {
+                                "action": "symptom_logged",
+                                "success": True,
+                                "data": result_data
+                            }
+                            logger.info(f"✅ INTENT: Successfully logged symptom: {intent_data.get('symptom_name')}")
+                        else:
+                            agent_action_result = {
+                                "action": "symptom_logging_failed", 
+                                "success": False,
+                                "error": "Failed to save symptom"
+                            }
+                            logger.error(f"❌ INTENT: Failed to log symptom")
+                    except Exception as e:
+                        logger.error(f"❌ INTENT: Error in symptom logging: {str(e)}")
+                        agent_action_result = {
+                            "action": "symptom_logging_failed",
+                            "success": False, 
+                            "error": str(e)
+                        }
+                else:
+                    logger.info("🔍 INTENT: Symptom logging intent detected but insufficient data")
+                    agent_action_result = {
+                        "action": "symptom_logging_incomplete",
+                        "success": False,
+                        "message": "I detected you want to log a symptom, but I need more details."
+                    }
+            
+            # Handle symptom history intent
+            elif intent_type == "get_symptom_history" and intent_confidence > 0.5:
+                try:
+                    logger.info(f"🔍 INTENT: Attempting to retrieve symptom history: {intent_data}")
+                    
+                    # Create a mock request for the agent action
+                    class MockRequest:
+                        def __init__(self, headers, query_params):
+                            self.headers = headers
+                            self.query_params = query_params
+                    
+                    mock_request = MockRequest(
+                        headers={'Authorization': authorization},
+                        query_params=intent_data
+                    )
+                    
+                    history_result = await agent_actions.get_symptoms(mock_request)
+                    
+                    if history_result.status_code == 200:
+                        result_data = json.loads(history_result.body.decode())
+                        agent_action_result = {
+                            "action": "symptom_history_retrieved",
+                            "success": True,
+                            "data": result_data
+                        }
+                        logger.info(f"✅ INTENT: Successfully retrieved symptom history")
+                    else:
+                        agent_action_result = {
+                            "action": "symptom_history_failed",
+                            "success": False,
+                            "error": "Failed to retrieve symptom history"
+                        }
+                except Exception as e:
+                    logger.error(f"❌ INTENT: Error retrieving symptom history: {str(e)}")
+                    agent_action_result = {
+                        "action": "symptom_history_failed",
+                        "success": False,
+                        "error": str(e)
+                    }
+        
         auth_service.log_auth_event("chat_request", user_context=user_payload, success=True, details={
             "query_length": len(request.query),
             "top_k": request.top_k,
             "temperature": request.temperature,
             "has_user_profile": user_profile is not None,
-            "has_conversation_history": conversation_history is not None and len(conversation_history) > 0
+            "has_conversation_history": conversation_history is not None and len(conversation_history) > 0,
+            "intent_type": intent_type,
+            "intent_confidence": intent_confidence,
+            "agent_action_taken": agent_action_result is not None
         })
         
         start_time = time.time()
@@ -482,29 +627,48 @@ async def chat(
         )
         
         if not similar_docs:
-            return ChatResponse(
-                response="I couldn't find any relevant information to answer your question. Please make sure you have uploaded some documents first.",
-                sources=[],
-                processing_time=int((time.time() - start_time) * 1000),
-                model="BioBERT",
-                tokens_used=0,
-                status="no_results"
-            )
-        
-        # Generate response using LLM if available - now with user context
-        if llm_handler:
-            response = await llm_handler.generate_response(
-                query=request.query,
-                context=similar_docs,
-                temperature=request.temperature,
-                user_profile=user_profile,
-                conversation_history=conversation_history
-            )
-            tokens_used = len(response.split())  # Rough token estimate
+            base_response = "I couldn't find any relevant information to answer your question. Please make sure you have uploaded some documents first."
+            tokens_used = 0
         else:
-            # Fallback response if LLM not available
-            response = f"Based on the documents I found, here's relevant information: {similar_docs[0]['content'][:200]}..."
-            tokens_used = len(response.split())
+            # Generate response using LLM if available - now with user context
+            if llm_handler:
+                response = await llm_handler.generate_response(
+                    query=request.query,
+                    context=similar_docs,
+                    temperature=request.temperature,
+                    user_profile=user_profile,
+                    conversation_history=conversation_history
+                )
+                tokens_used = len(response.split())  # Rough token estimate
+                base_response = response
+            else:
+                # Fallback response if LLM not available
+                base_response = f"Based on the documents I found, here's relevant information: {similar_docs[0]['content'][:200]}..."
+                tokens_used = len(base_response.split())
+        
+        # Modify response based on agent actions
+        final_response = base_response
+        if agent_action_result:
+            if agent_action_result["action"] == "symptom_logged" and agent_action_result["success"]:
+                symptom_name = agent_action_result["data"].get("symptom_name", "symptom")
+                final_response = f"✅ I've logged your {symptom_name} in your symptom history.\n\n{base_response}"
+            elif agent_action_result["action"] == "symptom_history_retrieved" and agent_action_result["success"]:
+                symptoms = agent_action_result["data"].get("symptoms", [])
+                if symptoms:
+                    symptom_summary = f"📊 I found {len(symptoms)} symptom entries in your history. "
+                    # Add some basic analysis
+                    if len(symptoms) > 1:
+                        recent_symptom = symptoms[0]  # Most recent
+                        symptom_summary += f"Your most recent entry was '{recent_symptom.get('symptom_name')}' "
+                        if recent_symptom.get('created_at'):
+                            symptom_summary += f"logged recently. "
+                    final_response = f"{symptom_summary}\n\n{base_response}"
+                else:
+                    final_response = "📊 I didn't find any symptoms in your history yet. You can start logging symptoms by telling me about any symptoms you're experiencing.\n\n" + base_response
+            elif agent_action_result["action"] == "symptom_logging_incomplete":
+                final_response = f"🤔 {agent_action_result.get('message', 'I need more details to log your symptom.')}\n\n{base_response}"
+            elif not agent_action_result["success"]:
+                final_response = f"⚠️ I tried to help with your request but encountered an issue: {agent_action_result.get('error', 'Unknown error')}.\n\n{base_response}"
         
         # Format sources for response
         sources = [
@@ -523,20 +687,35 @@ async def chat(
         
         request_logger.log_performance_metric("chat_response", time.time() - start_time, user_context=user_payload, metadata={
             "sources_found": len(sources),
-            "response_length": len(response),
+            "response_length": len(final_response),
             "tokens_used": tokens_used,
             "used_user_profile": user_profile is not None,
-            "used_conversation_history": conversation_history is not None and len(conversation_history) > 0
+            "used_conversation_history": conversation_history is not None and len(conversation_history) > 0,
+            "intent_detected": intent_type,
+            "agent_action_taken": agent_action_result is not None
         })
         
-        return ChatResponse(
-            response=response,
-            sources=sources,
-            processing_time=processing_time,
-            model="BioBERT",
-            tokens_used=tokens_used,
-            status="success"
-        )
+        # Build response with agent action metadata
+        response_data = {
+            "response": final_response,
+            "sources": sources,
+            "processing_time": processing_time,
+            "model": "BioBERT",
+            "tokens_used": tokens_used,
+            "status": "success"
+        }
+        
+        # Add agent action metadata if present
+        if agent_action_result:
+            response_data["agent_action"] = agent_action_result
+            response_data["intent_detected"] = {
+                "type": intent_type,
+                "confidence": intent_confidence,
+                "data": intent_data
+            }
+        
+        return ChatResponse(**response_data)
+        
     except HTTPException as e:
         logger.error(f"❌ HTTP error in chat endpoint: {e.detail}")
         auth_service.log_auth_event("chat_request", success=False, details={"error": e.detail})
@@ -732,7 +911,7 @@ async def health_check(
         "status": "healthy",
         "model": os.getenv("MODEL_NAME", "dmis-lab/biobert-v1.1"),
         "device": os.getenv("DEVICE", "cuda"),
-        "version": "1.0.0",
+        "version": "1.1.0",
         "uptime": uptime_seconds,
         "memory_usage": memory_usage,
         "endpoints": [
@@ -740,7 +919,10 @@ async def health_check(
             "/embed", 
             "/process-document",
             "/embedding-jobs/{id}",
-            "/chat"
+            "/chat",
+            "/agent-action/save-symptom",
+            "/agent-action/get-symptoms",
+            "/agent-action/symptom-summary"
         ],
         "capabilities": {
             "document_processing": True,
@@ -749,7 +931,10 @@ async def health_check(
             "vector_storage": True,
             "gpu_available": torch.cuda.is_available(),
             "user_context_support": True,
-            "conversation_history_support": True
+            "conversation_history_support": True,
+            "agent_awareness": True,
+            "intent_recognition": intent_recognizer is not None,
+            "symptom_tracking": True
         }
     }
     
@@ -800,7 +985,8 @@ async def health_check(
     request_logger.log_system_event("health_check", {
         "status": "healthy",
         "session_id": x_session_id,
-        "session_updated": health_data.get("session_updated", False)
+        "session_updated": health_data.get("session_updated", False),
+        "agent_awareness": True
     })
     
     return health_data
