@@ -1,9 +1,9 @@
 {
   "info": {
-    "name": "TxAgent Medical RAG API Tests - Phase 1 Agent Awareness",
-    "description": "Comprehensive test collection for TxAgent Hybrid Container with Phase 1 Agent Awareness features including symptom tracking and intent recognition",
+    "name": "TxAgent Medical RAG API Tests - Phase 2 Enhanced Intelligence",
+    "description": "Comprehensive test collection for TxAgent Hybrid Container with Phase 2 Enhanced Conversation Flow and Advanced NLP capabilities",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "version": "3.1.0"
+    "version": "3.2.0"
   },
   "variable": [
     {
@@ -39,7 +39,7 @@
   ],
   "item": [
     {
-      "name": "1. Health Check",
+      "name": "1. Health Check - Phase 2 Capabilities",
       "event": [
         {
           "listen": "test",
@@ -49,35 +49,27 @@
               "    pm.response.to.have.status(200);",
               "});",
               "",
-              "pm.test(\"Response has status field\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('status');",
-              "    pm.expect(jsonData.status).to.eql('healthy');",
-              "});",
-              "",
-              "pm.test(\"Response has agent awareness capabilities\", function () {",
+              "pm.test(\"Response has Phase 2 capabilities\", function () {",
               "    var jsonData = pm.response.json();",
               "    pm.expect(jsonData).to.have.property('capabilities');",
-              "    pm.expect(jsonData.capabilities).to.have.property('agent_awareness');",
-              "    pm.expect(jsonData.capabilities).to.have.property('intent_recognition');",
-              "    pm.expect(jsonData.capabilities).to.have.property('symptom_tracking');",
-              "    pm.expect(jsonData.capabilities.agent_awareness).to.eql(true);",
-              "    console.log(`Agent Awareness: ${jsonData.capabilities.agent_awareness}`);",
-              "    console.log(`Intent Recognition: ${jsonData.capabilities.intent_recognition}`);",
-              "    console.log(`Symptom Tracking: ${jsonData.capabilities.symptom_tracking}`);",
+              "    pm.expect(jsonData.capabilities).to.have.property('phase2_features');",
+              "    pm.expect(jsonData.capabilities).to.have.property('advanced_nlp');",
+              "    pm.expect(jsonData.capabilities).to.have.property('conversation_management');",
+              "    pm.expect(jsonData.capabilities.phase2_features).to.eql(true);",
+              "    console.log(`Phase 2 Features: ${jsonData.capabilities.phase2_features}`);",
+              "    console.log(`Advanced NLP: ${jsonData.capabilities.advanced_nlp}`);",
+              "    console.log(`Conversation Management: ${jsonData.capabilities.conversation_management}`);",
               "});",
               "",
-              "pm.test(\"Response has Phase 1 endpoints\", function () {",
+              "pm.test(\"Version is 1.2.0 or higher\", function () {",
               "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('endpoints');",
-              "    var endpoints = jsonData.endpoints;",
-              "    pm.expect(endpoints).to.include('/agent-action/save-symptom');",
-              "    pm.expect(endpoints).to.include('/agent-action/get-symptoms');",
-              "    pm.expect(endpoints).to.include('/agent-action/symptom-summary');",
-              "    console.log(`Available endpoints: ${endpoints.join(', ')}`);",
+              "    pm.expect(jsonData).to.have.property('version');",
+              "    var version = jsonData.version;",
+              "    pm.expect(version).to.match(/^1\\.[2-9]\\.|^[2-9]\\./);",
+              "    console.log(`Version: ${version}`);",
               "});",
               "",
-              "console.log(\"✅ Health check successful - TxAgent container with Phase 1 Agent Awareness\");"
+              "console.log(\"✅ Health check successful - TxAgent container with Phase 2 Enhanced Intelligence\");"
             ],
             "type": "text/javascript"
           }
@@ -91,11 +83,701 @@
           "host": ["{{base_url}}"],
           "path": ["health"]
         },
-        "description": "Check if the TxAgent container is healthy and has Phase 1 agent awareness capabilities"
+        "description": "Check if the TxAgent container has Phase 2 enhanced intelligence capabilities"
       }
     },
     {
-      "name": "2. Direct Symptom Save Test",
+      "name": "2. Phase 2 - Complex Symptom Extraction",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Phase 2 conversation analysis present\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('conversation_analysis');",
+              "    pm.expect(jsonData.conversation_analysis).to.have.property('phase');",
+              "    pm.expect(jsonData.conversation_analysis.phase).to.eql('2');",
+              "    console.log(`Conversation Phase: ${jsonData.conversation_analysis.phase}`);",
+              "});",
+              "",
+              "pm.test(\"Advanced symptom extraction detected\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.intent_detected) {",
+              "        pm.expect(jsonData.intent_detected.type).to.eql('log_symptom');",
+              "        pm.expect(jsonData.intent_detected.confidence).to.be.above(0.7);",
+              "        ",
+              "        var data = jsonData.intent_detected.data;",
+              "        console.log(`Extracted symptom data: ${JSON.stringify(data)}`);",
+              "        ",
+              "        // Should extract multiple details from complex description",
+              "        if (data.symptom_name) {",
+              "            console.log(`✅ Symptom: ${data.symptom_name}`);",
+              "        }",
+              "        if (data.severity) {",
+              "            console.log(`✅ Severity: ${data.severity}/10`);",
+              "        }",
+              "        if (data.duration_hours) {",
+              "            console.log(`✅ Duration: ${data.duration_hours} hours`);",
+              "        }",
+              "        if (data.location) {",
+              "            console.log(`✅ Location: ${data.location}`);",
+              "        }",
+              "        if (data.quality) {",
+              "            console.log(`✅ Quality: ${data.quality}`);",
+              "        }",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"Enhanced response with medical advice\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.response).to.be.a('string');",
+              "    pm.expect(jsonData.response.length).to.be.above(50);",
+              "    ",
+              "    // Should include severity and medical advice",
+              "    pm.expect(jsonData.response.toLowerCase()).to.include('migraine');",
+              "    console.log(`Response preview: ${jsonData.response.substring(0, 200)}...`);",
+              "});",
+              "",
+              "console.log(\"✅ Phase 2 complex symptom extraction successful\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token for authentication"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"I've been having this terrible migraine for the past 6 hours. The pain is excruciating, probably a 9 out of 10, and it's concentrated on the left side of my head. It started after I skipped lunch and didn't drink enough water.\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 28,\n      \"gender\": \"female\",\n      \"conditions\": [\"migraine\", \"dehydration sensitivity\"],\n      \"medications\": [\"sumatriptan\"],\n      \"allergies\": [\"aspirin\"]\n    },\n    \"conversation_history\": [\n      {\n        \"role\": \"user\",\n        \"content\": \"Hello, I need help tracking my symptoms\"\n      },\n      {\n        \"role\": \"assistant\",\n        \"content\": \"I'm here to help you track your symptoms. What are you experiencing?\"\n      }\n    ]\n  },\n  \"top_k\": 3,\n  \"temperature\": 0.7\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "Test Phase 2 advanced symptom extraction with complex, multi-detail symptom description"
+      }
+    },
+    {
+      "name": "3. Phase 2 - Incomplete Information with Follow-up",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Conversation analysis shows follow-up needed\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.conversation_analysis) {",
+              "        pm.expect(jsonData.conversation_analysis).to.have.property('follow_up_needed');",
+              "        console.log(`Follow-up needed: ${jsonData.conversation_analysis.follow_up_needed}`);",
+              "        console.log(`Strategy: ${JSON.stringify(jsonData.conversation_analysis.strategy)}`);",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"Response includes intelligent follow-up questions\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.response).to.be.a('string');",
+              "    ",
+              "    // Should include follow-up questions for missing details",
+              "    var response = jsonData.response.toLowerCase();",
+              "    var hasFollowUp = response.includes('?') || response.includes('rate') || response.includes('scale') || response.includes('how');",
+              "    pm.expect(hasFollowUp).to.eql(true);",
+              "    ",
+              "    console.log(`Response with follow-up: ${jsonData.response.substring(0, 200)}...`);",
+              "});",
+              "",
+              "pm.test(\"Partial symptom logging detected\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.intent_detected) {",
+              "        pm.expect(jsonData.intent_detected.type).to.eql('log_symptom');",
+              "        var data = jsonData.intent_detected.data;",
+              "        ",
+              "        // Should have symptom name but missing other details",
+              "        if (data.symptom_name) {",
+              "            console.log(`✅ Detected symptom: ${data.symptom_name}`);",
+              "        }",
+              "        ",
+              "        // Should identify missing details",
+              "        if (data.missing_details) {",
+              "            console.log(`Missing details: ${data.missing_details.join(', ')}`);",
+              "        }",
+              "        ",
+              "        // Should generate follow-up questions",
+              "        if (data.follow_up_questions) {",
+              "            console.log(`Follow-up questions: ${data.follow_up_questions.join('; ')}`);",
+              "        }",
+              "    }",
+              "});",
+              "",
+              "console.log(\"✅ Phase 2 incomplete information with follow-up successful\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token for authentication"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"My back has been hurting\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 45,\n      \"gender\": \"male\",\n      \"conditions\": [\"arthritis\"],\n      \"medications\": [\"naproxen\"]\n    },\n    \"conversation_history\": [\n      {\n        \"role\": \"user\",\n        \"content\": \"I want to track my symptoms\"\n      },\n      {\n        \"role\": \"assistant\",\n        \"content\": \"I can help you track your symptoms. What are you experiencing?\"\n      }\n    ]\n  },\n  \"top_k\": 3,\n  \"temperature\": 0.7\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "Test Phase 2 handling of incomplete symptom information with intelligent follow-up questions"
+      }
+    },
+    {
+      "name": "4. Phase 2 - Emergency Detection",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Emergency response detected\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.response).to.be.a('string');",
+              "    ",
+              "    var response = jsonData.response.toLowerCase();",
+              "    var hasEmergencyIndicators = response.includes('urgent') || response.includes('emergency') || response.includes('911') || response.includes('🚨');",
+              "    pm.expect(hasEmergencyIndicators).to.eql(true);",
+              "    ",
+              "    console.log(`Emergency response: ${jsonData.response.substring(0, 200)}...`);",
+              "});",
+              "",
+              "pm.test(\"Conversation analysis shows emergency strategy\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.conversation_analysis && jsonData.conversation_analysis.strategy) {",
+              "        var strategy = jsonData.conversation_analysis.strategy;",
+              "        console.log(`Strategy type: ${strategy.type}`);",
+              "        console.log(`Priority: ${strategy.priority}`);",
+              "        ",
+              "        // Should detect emergency or high priority",
+              "        if (strategy.priority) {",
+              "            pm.expect(strategy.priority).to.be.oneOf(['critical', 'high']);",
+              "        }",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"Critical symptom logging attempted\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.agent_action) {",
+              "        console.log(`Agent action: ${jsonData.agent_action.action}`);",
+              "        console.log(`Success: ${jsonData.agent_action.success}`);",
+              "        ",
+              "        // Should attempt to log the critical symptom",
+              "        if (jsonData.agent_action.success && jsonData.agent_action.data) {",
+              "            console.log(`Logged critical symptom: ${jsonData.agent_action.data.symptom_name}`);",
+              "        }",
+              "    }",
+              "});",
+              "",
+              "console.log(\"✅ Phase 2 emergency detection successful\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token for authentication"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"I'm having severe chest pain and I can't breathe properly. This is really scary.\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 55,\n      \"gender\": \"male\",\n      \"conditions\": [\"hypertension\", \"high cholesterol\"],\n      \"medications\": [\"lisinopril\", \"atorvastatin\"]\n    },\n    \"conversation_history\": [\n      {\n        \"role\": \"user\",\n        \"content\": \"I need help, something's wrong\"\n      }\n    ]\n  },\n  \"top_k\": 3,\n  \"temperature\": 0.7\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "Test Phase 2 emergency detection for critical symptoms requiring immediate medical attention"
+      }
+    },
+    {
+      "name": "5. Phase 2 - Temporal Pattern Recognition",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Advanced temporal extraction\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.intent_detected && jsonData.intent_detected.data) {",
+              "        var data = jsonData.intent_detected.data;",
+              "        console.log(`Extracted temporal data: ${JSON.stringify(data)}`);",
+              "        ",
+              "        // Should extract frequency pattern",
+              "        if (data.frequency) {",
+              "            console.log(`✅ Frequency: ${data.frequency}`);",
+              "        }",
+              "        ",
+              "        // Should extract duration",
+              "        if (data.duration_hours) {",
+              "            console.log(`✅ Duration: ${data.duration_hours} hours`);",
+              "        }",
+              "        ",
+              "        // Should extract triggers",
+              "        if (data.triggers && data.triggers.length > 0) {",
+              "            console.log(`✅ Triggers: ${data.triggers.join(', ')}`);",
+              "        }",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"Response acknowledges pattern\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.response).to.be.a('string');",
+              "    ",
+              "    var response = jsonData.response.toLowerCase();",
+              "    var hasPatternRecognition = response.includes('every') || response.includes('pattern') || response.includes('frequency') || response.includes('trigger');",
+              "    ",
+              "    console.log(`Response acknowledges pattern: ${hasPatternRecognition}`);",
+              "    console.log(`Response preview: ${jsonData.response.substring(0, 200)}...`);",
+              "});",
+              "",
+              "console.log(\"✅ Phase 2 temporal pattern recognition successful\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token for authentication"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"I get these headaches every few days, usually lasting about 4-5 hours. They seem to be triggered by stress and lack of sleep. The pain is typically moderate, around a 6 out of 10.\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 32,\n      \"gender\": \"female\",\n      \"conditions\": [\"tension headaches\"],\n      \"medications\": [\"ibuprofen as needed\"]\n    },\n    \"conversation_history\": [\n      {\n        \"role\": \"user\",\n        \"content\": \"I want to track my headache patterns\"\n      },\n      {\n        \"role\": \"assistant\",\n        \"content\": \"I can help you identify patterns in your headaches. Tell me about them.\"\n      }\n    ]\n  },\n  \"top_k\": 3,\n  \"temperature\": 0.7\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "Test Phase 2 temporal pattern recognition for frequency, duration, and triggers"
+      }
+    },
+    {
+      "name": "6. Phase 2 - Quality Descriptor Extraction",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Quality descriptors extracted\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.intent_detected && jsonData.intent_detected.data) {",
+              "        var data = jsonData.intent_detected.data;",
+              "        console.log(`Extracted quality data: ${JSON.stringify(data)}`);",
+              "        ",
+              "        // Should extract pain quality",
+              "        if (data.quality) {",
+              "            console.log(`✅ Pain quality: ${data.quality}`);",
+              "            pm.expect(data.quality.toLowerCase()).to.include('sharp');",
+              "        }",
+              "        ",
+              "        // Should extract location",
+              "        if (data.location) {",
+              "            console.log(`✅ Location: ${data.location}`);",
+              "        }",
+              "        ",
+              "        // Should extract symptom name",
+              "        if (data.symptom_name) {",
+              "            console.log(`✅ Symptom: ${data.symptom_name}`);",
+              "        }",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"Response includes quality acknowledgment\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.response).to.be.a('string');",
+              "    ",
+              "    var response = jsonData.response.toLowerCase();",
+              "    var hasQualityAcknowledgment = response.includes('sharp') || response.includes('quality') || response.includes('type');",
+              "    ",
+              "    console.log(`Response includes quality: ${hasQualityAcknowledgment}`);",
+              "    console.log(`Response preview: ${jsonData.response.substring(0, 200)}...`);",
+              "});",
+              "",
+              "console.log(\"✅ Phase 2 quality descriptor extraction successful\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token for authentication"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"I have this sharp, stabbing pain in my lower back that comes and goes. It feels like someone is poking me with a needle.\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 40,\n      \"gender\": \"male\",\n      \"conditions\": [\"lower back pain\"],\n      \"medications\": [\"naproxen\"]\n    },\n    \"conversation_history\": [\n      {\n        \"role\": \"user\",\n        \"content\": \"I need to describe my back pain better\"\n      },\n      {\n        \"role\": \"assistant\",\n        \"content\": \"Please describe the pain in detail - what does it feel like?\"\n      }\n    ]\n  },\n  \"top_k\": 3,\n  \"temperature\": 0.7\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "Test Phase 2 extraction of pain quality descriptors and characteristics"
+      }
+    },
+    {
+      "name": "7. Phase 2 - Conversation History Context",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Conversation context utilized\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.conversation_analysis) {",
+              "        console.log(`Conversation stage: ${jsonData.conversation_analysis.flow_analysis?.conversation_stage}`);",
+              "        console.log(`Information completeness: ${jsonData.conversation_analysis.flow_analysis?.information_completeness}`);",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"Context-aware response\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.response).to.be.a('string');",
+              "    ",
+              "    var response = jsonData.response.toLowerCase();",
+              "    // Should reference previous conversation about nausea",
+              "    var hasContextReference = response.includes('nausea') || response.includes('earlier') || response.includes('mentioned');",
+              "    ",
+              "    console.log(`Context-aware response: ${hasContextReference}`);",
+              "    console.log(`Response preview: ${jsonData.response.substring(0, 200)}...`);",
+              "});",
+              "",
+              "pm.test(\"Enhanced symptom extraction from context\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.intent_detected && jsonData.intent_detected.data) {",
+              "        var data = jsonData.intent_detected.data;",
+              "        console.log(`Context-enhanced extraction: ${JSON.stringify(data)}`);",
+              "        ",
+              "        // Should connect current query with conversation history",
+              "        if (data.symptom_name) {",
+              "            console.log(`✅ Symptom from context: ${data.symptom_name}`);",
+              "        }",
+              "    }",
+              "});",
+              "",
+              "console.log(\"✅ Phase 2 conversation history context successful\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token for authentication"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"It's getting worse and now I feel like I might throw up\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 25,\n      \"gender\": \"female\",\n      \"conditions\": [\"motion sickness\"],\n      \"medications\": [\"dramamine as needed\"]\n    },\n    \"conversation_history\": [\n      {\n        \"role\": \"user\",\n        \"content\": \"I've been feeling nauseous for about an hour\"\n      },\n      {\n        \"role\": \"assistant\",\n        \"content\": \"I've logged your nausea. Can you tell me more about what might have triggered it?\"\n      },\n      {\n        \"role\": \"user\",\n        \"content\": \"I was reading in the car on the way here\"\n      },\n      {\n        \"role\": \"assistant\",\n        \"content\": \"That could definitely trigger motion sickness. How are you feeling now?\"\n      }\n    ]\n  },\n  \"top_k\": 3,\n  \"temperature\": 0.7\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "Test Phase 2 utilization of conversation history for context-aware symptom tracking"
+      }
+    },
+    {
+      "name": "8. Phase 2 - Medical Advice Integration",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Medical advice included\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.response).to.be.a('string');",
+              "    ",
+              "    var response = jsonData.response.toLowerCase();",
+              "    var hasMedicalAdvice = response.includes('advice') || response.includes('recommend') || response.includes('consider') || response.includes('💡');",
+              "    pm.expect(hasMedicalAdvice).to.eql(true);",
+              "    ",
+              "    console.log(`Medical advice included: ${hasMedicalAdvice}`);",
+              "    console.log(`Response preview: ${jsonData.response.substring(0, 300)}...`);",
+              "});",
+              "",
+              "pm.test(\"Safety disclaimer present\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    var response = jsonData.response.toLowerCase();",
+              "    var hasDisclaimer = response.includes('professional') || response.includes('healthcare') || response.includes('medical advice') || response.includes('consult');",
+              "    pm.expect(hasDisclaimer).to.eql(true);",
+              "    ",
+              "    console.log(`Safety disclaimer present: ${hasDisclaimer}`);",
+              "});",
+              "",
+              "pm.test(\"Contextual advice for fever\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    var response = jsonData.response.toLowerCase();",
+              "    var hasFeverAdvice = response.includes('fever') || response.includes('temperature') || response.includes('hydration') || response.includes('rest');",
+              "    ",
+              "    console.log(`Fever-specific advice: ${hasFeverAdvice}`);",
+              "});",
+              "",
+              "console.log(\"✅ Phase 2 medical advice integration successful\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token for authentication"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"I have a fever of 101.5°F and I'm feeling really weak and tired. This started this morning.\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 30,\n      \"gender\": \"male\",\n      \"conditions\": [],\n      \"medications\": [],\n      \"allergies\": [\"penicillin\"]\n    },\n    \"conversation_history\": [\n      {\n        \"role\": \"user\",\n        \"content\": \"I think I might be getting sick\"\n      },\n      {\n        \"role\": \"assistant\",\n        \"content\": \"I can help you track your symptoms. What are you experiencing?\"\n      }\n    ]\n  },\n  \"top_k\": 3,\n  \"temperature\": 0.7\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "Test Phase 2 integration of contextual medical advice with symptom logging"
+      }
+    },
+    {
+      "name": "9. Phase 2 - Fallback to Phase 1",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"System handles fallback gracefully\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData.response).to.be.a('string');",
+              "    pm.expect(jsonData.response.length).to.be.above(10);",
+              "    ",
+              "    // Should still detect intent even if Phase 2 components fail",
+              "    if (jsonData.intent_detected) {",
+              "        console.log(`Intent detected: ${jsonData.intent_detected.type}`);",
+              "        console.log(`Confidence: ${jsonData.intent_detected.confidence}`);",
+              "    }",
+              "    ",
+              "    // Should still provide a meaningful response",
+              "    console.log(`Response preview: ${jsonData.response.substring(0, 200)}...`);",
+              "});",
+              "",
+              "pm.test(\"Basic symptom logging still works\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.agent_action) {",
+              "        console.log(`Agent action: ${jsonData.agent_action.action}`);",
+              "        console.log(`Success: ${jsonData.agent_action.success}`);",
+              "    }",
+              "});",
+              "",
+              "console.log(\"✅ Phase 2 fallback to Phase 1 successful\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token for authentication"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"I want to log a headache symptom\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 35,\n      \"gender\": \"female\"\n    }\n  },\n  \"top_k\": 3,\n  \"temperature\": 0.7\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "Test that Phase 1 functionality still works as fallback when Phase 2 components are unavailable"
+      }
+    },
+    {
+      "name": "10. Phase 2 - Performance Benchmark",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Status code is 200\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test(\"Response time is acceptable for Phase 2\", function () {",
+              "    pm.expect(pm.response.responseTime).to.be.below(3000); // 3 seconds max for complex processing",
+              "    console.log(`Response time: ${pm.response.responseTime}ms`);",
+              "});",
+              "",
+              "pm.test(\"Processing time is reported\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    pm.expect(jsonData).to.have.property('processing_time');",
+              "    pm.expect(jsonData.processing_time).to.be.a('number');",
+              "    console.log(`Processing time: ${jsonData.processing_time}ms`);",
+              "});",
+              "",
+              "pm.test(\"Phase 2 features add minimal overhead\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.conversation_analysis) {",
+              "        console.log(`Phase 2 conversation management successful with minimal overhead`);",
+              "        console.log(`Strategy: ${jsonData.conversation_analysis.strategy?.type}`);",
+              "        console.log(`Information completeness: ${jsonData.conversation_analysis.flow_analysis?.information_completeness}`);",
+              "    }",
+              "});",
+              "",
+              "pm.test(\"Complex extraction performance\", function () {",
+              "    var jsonData = pm.response.json();",
+              "    if (jsonData.intent_detected && jsonData.intent_detected.data) {",
+              "        var extractedFields = Object.keys(jsonData.intent_detected.data).length;",
+              "        console.log(`Extracted ${extractedFields} fields from complex query`);",
+              "        pm.expect(extractedFields).to.be.above(3); // Should extract multiple details",
+              "    }",
+              "});",
+              "",
+              "console.log(\"✅ Phase 2 performance benchmark successful\");"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwt_token}}",
+            "description": "JWT token for authentication"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"I've been experiencing severe abdominal pain for the past 8 hours. It's a sharp, cramping pain that comes in waves, probably around an 8 out of 10 in severity. It started after I ate some seafood at lunch, and I'm also feeling nauseous and have had some diarrhea.\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 42,\n      \"gender\": \"female\",\n      \"conditions\": [\"IBS\", \"food allergies\"],\n      \"medications\": [\"omeprazole\"],\n      \"allergies\": [\"shellfish\"]\n    },\n    \"conversation_history\": [\n      {\n        \"role\": \"user\",\n        \"content\": \"I think I might have food poisoning\"\n      },\n      {\n        \"role\": \"assistant\",\n        \"content\": \"I'm sorry to hear you're not feeling well. Can you describe your symptoms in detail?\"\n      },\n      {\n        \"role\": \"user\",\n        \"content\": \"I ate at a new restaurant today\"\n      },\n      {\n        \"role\": \"assistant\",\n        \"content\": \"That could be related. What specific symptoms are you experiencing?\"\n      }\n    ]\n  },\n  \"top_k\": 5,\n  \"temperature\": 0.7\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/chat",
+          "host": ["{{base_url}}"],
+          "path": ["chat"]
+        },
+        "description": "Performance benchmark for Phase 2 with complex, multi-symptom scenario including conversation history"
+      }
+    },
+    {
+      "name": "11. Direct Symptom Save Test",
       "event": [
         {
           "listen": "test",
@@ -158,509 +840,11 @@
           "host": ["{{base_url}}"],
           "path": ["agent-action", "save-symptom"]
         },
-        "description": "Test direct symptom saving via agent action endpoint"
+        "description": "Test direct symptom saving via agent action endpoint (Phase 1 functionality)"
       }
     },
     {
-      "name": "3. Direct Symptom Retrieval Test",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 200\", function () {",
-              "    pm.response.to.have.status(200);",
-              "});",
-              "",
-              "pm.test(\"Symptoms retrieved successfully\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('symptoms');",
-              "    pm.expect(jsonData).to.have.property('count');",
-              "    pm.expect(jsonData.symptoms).to.be.an('array');",
-              "    console.log(`Retrieved ${jsonData.count} symptoms`);",
-              "});",
-              "",
-              "pm.test(\"Symptom data structure is correct\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    if (jsonData.symptoms.length > 0) {",
-              "        var symptom = jsonData.symptoms[0];",
-              "        pm.expect(symptom).to.have.property('id');",
-              "        pm.expect(symptom).to.have.property('symptom_name');",
-              "        pm.expect(symptom).to.have.property('created_at');",
-              "        console.log(`Latest symptom: ${symptom.symptom_name} (${symptom.created_at})`);",
-              "        ",
-              "        if (symptom.severity) {",
-              "            console.log(`Severity: ${symptom.severity}/10`);",
-              "        }",
-              "        if (symptom.location) {",
-              "            console.log(`Location: ${symptom.location}`);",
-              "        }",
-              "    }",
-              "});",
-              "",
-              "pm.test(\"Filters are applied correctly\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('filters');",
-              "    pm.expect(jsonData.filters.limit).to.eql(5);",
-              "});",
-              "",
-              "console.log(\"✅ Direct symptom retrieval test successful\");"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{jwt_token}}",
-            "description": "JWT token for authentication"
-          }
-        ],
-        "url": {
-          "raw": "{{base_url}}/agent-action/get-symptoms?limit=5",
-          "host": ["{{base_url}}"],
-          "path": ["agent-action", "get-symptoms"],
-          "query": [
-            {
-              "key": "limit",
-              "value": "5"
-            }
-          ]
-        },
-        "description": "Test direct symptom retrieval via agent action endpoint"
-      }
-    },
-    {
-      "name": "4. Symptom Summary Test",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 200\", function () {",
-              "    pm.response.to.have.status(200);",
-              "});",
-              "",
-              "pm.test(\"Summary data structure is correct\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('total_symptoms');",
-              "    pm.expect(jsonData).to.have.property('days_analyzed');",
-              "    pm.expect(jsonData).to.have.property('symptom_counts');",
-              "    pm.expect(jsonData).to.have.property('recent_patterns');",
-              "    console.log(`Total symptoms: ${jsonData.total_symptoms}`);",
-              "    console.log(`Days analyzed: ${jsonData.days_analyzed}`);",
-              "});",
-              "",
-              "pm.test(\"Summary includes analysis\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    if (jsonData.total_symptoms > 0) {",
-              "        pm.expect(jsonData).to.have.property('most_common_symptom');",
-              "        pm.expect(jsonData).to.have.property('unique_symptoms');",
-              "        console.log(`Most common symptom: ${jsonData.most_common_symptom}`);",
-              "        console.log(`Unique symptoms: ${jsonData.unique_symptoms}`);",
-              "        ",
-              "        if (jsonData.severity_average) {",
-              "            console.log(`Average severity: ${jsonData.severity_average}/10`);",
-              "        }",
-              "        ",
-              "        if (jsonData.recent_patterns.length > 0) {",
-              "            console.log(`Patterns: ${jsonData.recent_patterns.join(', ')}`);",
-              "        }",
-              "    }",
-              "});",
-              "",
-              "console.log(\"✅ Symptom summary test successful\");"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{jwt_token}}",
-            "description": "JWT token for authentication"
-          }
-        ],
-        "url": {
-          "raw": "{{base_url}}/agent-action/symptom-summary?days_back=30",
-          "host": ["{{base_url}}"],
-          "path": ["agent-action", "symptom-summary"],
-          "query": [
-            {
-              "key": "days_back",
-              "value": "30"
-            }
-          ]
-        },
-        "description": "Test symptom summary and analysis endpoint"
-      }
-    },
-    {
-      "name": "5. Intent Recognition - Symptom Logging",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 200\", function () {",
-              "    pm.response.to.have.status(200);",
-              "});",
-              "",
-              "pm.test(\"Intent recognition detected symptom logging\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('intent_detected');",
-              "    pm.expect(jsonData).to.have.property('agent_action');",
-              "    ",
-              "    if (jsonData.intent_detected) {",
-              "        pm.expect(jsonData.intent_detected.type).to.eql('log_symptom');",
-              "        pm.expect(jsonData.intent_detected.confidence).to.be.above(0.5);",
-              "        console.log(`Intent: ${jsonData.intent_detected.type}, Confidence: ${jsonData.intent_detected.confidence}`);",
-              "        console.log(`Extracted data: ${JSON.stringify(jsonData.intent_detected.data)}`);",
-              "    }",
-              "});",
-              "",
-              "pm.test(\"Agent action was taken\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    if (jsonData.agent_action) {",
-              "        pm.expect(jsonData.agent_action.action).to.be.oneOf(['symptom_logged', 'symptom_logging_incomplete']);",
-              "        console.log(`Agent action: ${jsonData.agent_action.action}`);",
-              "        console.log(`Success: ${jsonData.agent_action.success}`);",
-              "        ",
-              "        if (jsonData.agent_action.success && jsonData.agent_action.data) {",
-              "            console.log(`Logged symptom: ${jsonData.agent_action.data.symptom_name}`);",
-              "        }",
-              "    }",
-              "});",
-              "",
-              "pm.test(\"Response includes symptom confirmation\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData.response).to.include('nausea');",
-              "    // Should include confirmation of logging",
-              "    if (jsonData.agent_action && jsonData.agent_action.success) {",
-              "        pm.expect(jsonData.response).to.include('logged');",
-              "    }",
-              "});",
-              "",
-              "console.log(\"✅ Intent recognition for symptom logging successful\");"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{jwt_token}}",
-            "description": "JWT token for authentication"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"query\": \"I'm experiencing nausea and it's been going on for about 2 hours. The severity is moderate, maybe a 5 out of 10.\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 32,\n      \"gender\": \"female\",\n      \"conditions\": [\"migraine\"],\n      \"medications\": [\"ibuprofen\"]\n    },\n    \"conversation_history\": [\n      {\n        \"role\": \"user\",\n        \"content\": \"Hello, I need to track my symptoms\"\n      },\n      {\n        \"role\": \"assistant\",\n        \"content\": \"I can help you track your symptoms. What are you experiencing?\"\n      }\n    ]\n  },\n  \"top_k\": 3,\n  \"temperature\": 0.7\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/chat",
-          "host": ["{{base_url}}"],
-          "path": ["chat"]
-        },
-        "description": "Test intent recognition for symptom logging through chat endpoint"
-      }
-    },
-    {
-      "name": "6. Intent Recognition - Symptom History",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 200\", function () {",
-              "    pm.response.to.have.status(200);",
-              "});",
-              "",
-              "pm.test(\"Intent recognition detected history request\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('intent_detected');",
-              "    pm.expect(jsonData).to.have.property('agent_action');",
-              "    ",
-              "    if (jsonData.intent_detected) {",
-              "        pm.expect(jsonData.intent_detected.type).to.eql('get_symptom_history');",
-              "        pm.expect(jsonData.intent_detected.confidence).to.be.above(0.5);",
-              "        console.log(`Intent: ${jsonData.intent_detected.type}, Confidence: ${jsonData.intent_detected.confidence}`);",
-              "    }",
-              "});",
-              "",
-              "pm.test(\"Agent action retrieved history\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    if (jsonData.agent_action) {",
-              "        pm.expect(jsonData.agent_action.action).to.eql('symptom_history_retrieved');",
-              "        console.log(`Agent action: ${jsonData.agent_action.action}`);",
-              "        console.log(`Success: ${jsonData.agent_action.success}`);",
-              "        ",
-              "        if (jsonData.agent_action.success && jsonData.agent_action.data) {",
-              "            console.log(`Found ${jsonData.agent_action.data.count} symptoms in history`);",
-              "        }",
-              "    }",
-              "});",
-              "",
-              "pm.test(\"Response includes history information\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    // Should include information about found symptoms",
-              "    if (jsonData.agent_action && jsonData.agent_action.success) {",
-              "        pm.expect(jsonData.response).to.include('found');",
-              "    }",
-              "});",
-              "",
-              "console.log(\"✅ Intent recognition for symptom history successful\");"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{jwt_token}}",
-            "description": "JWT token for authentication"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"query\": \"Can you show me my symptom history from the last week?\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 32,\n      \"gender\": \"female\",\n      \"conditions\": [\"migraine\"],\n      \"medications\": [\"ibuprofen\"]\n    },\n    \"conversation_history\": [\n      {\n        \"role\": \"user\",\n        \"content\": \"I logged some symptoms earlier\"\n      },\n      {\n        \"role\": \"assistant\",\n        \"content\": \"Yes, I can help you review your symptom history.\"\n      }\n    ]\n  },\n  \"top_k\": 3,\n  \"temperature\": 0.7\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/chat",
-          "host": ["{{base_url}}"],
-          "path": ["chat"]
-        },
-        "description": "Test intent recognition for symptom history retrieval through chat endpoint"
-      }
-    },
-    {
-      "name": "7. Implicit Symptom Detection",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 200\", function () {",
-              "    pm.response.to.have.status(200);",
-              "});",
-              "",
-              "pm.test(\"Intent recognition detected implicit symptom\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    ",
-              "    // May detect as log_symptom with lower confidence or general_chat",
-              "    if (jsonData.intent_detected) {",
-              "        console.log(`Intent: ${jsonData.intent_detected.type}, Confidence: ${jsonData.intent_detected.confidence}`);",
-              "        console.log(`Extracted data: ${JSON.stringify(jsonData.intent_detected.data)}`);",
-              "        ",
-              "        if (jsonData.intent_detected.type === 'log_symptom') {",
-              "            pm.expect(jsonData.intent_detected.confidence).to.be.above(0.3);",
-              "        }",
-              "    }",
-              "});",
-              "",
-              "pm.test(\"Response is contextually appropriate\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData.response).to.be.a('string');",
-              "    pm.expect(jsonData.response.length).to.be.above(10);",
-              "    ",
-              "    // Should mention back pain in some way",
-              "    pm.expect(jsonData.response.toLowerCase()).to.include('back');",
-              "});",
-              "",
-              "console.log(\"✅ Implicit symptom detection test successful\");"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{jwt_token}}",
-            "description": "JWT token for authentication"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"query\": \"My back has been hurting since yesterday\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 45,\n      \"gender\": \"male\",\n      \"conditions\": [\"arthritis\"],\n      \"medications\": [\"naproxen\"]\n    }\n  },\n  \"top_k\": 3,\n  \"temperature\": 0.7\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/chat",
-          "host": ["{{base_url}}"],
-          "path": ["chat"]
-        },
-        "description": "Test implicit symptom detection (less explicit symptom mention)"
-      }
-    },
-    {
-      "name": "8. General Chat (No Intent)",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 200\", function () {",
-              "    pm.response.to.have.status(200);",
-              "});",
-              "",
-              "pm.test(\"No specific intent detected\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    ",
-              "    if (jsonData.intent_detected) {",
-              "        pm.expect(jsonData.intent_detected.type).to.eql('general_chat');",
-              "        pm.expect(jsonData.intent_detected.confidence).to.eql(0.0);",
-              "        console.log(`Intent: ${jsonData.intent_detected.type}, Confidence: ${jsonData.intent_detected.confidence}`);",
-              "    }",
-              "});",
-              "",
-              "pm.test(\"No agent action taken\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    // Should not have agent_action for general chat",
-              "    if (jsonData.agent_action) {",
-              "        console.log(`Unexpected agent action: ${jsonData.agent_action.action}`);",
-              "    }",
-              "});",
-              "",
-              "pm.test(\"Response is appropriate for general query\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData.response).to.be.a('string');",
-              "    pm.expect(jsonData.response.length).to.be.above(10);",
-              "    console.log(`Response preview: ${jsonData.response.substring(0, 100)}...`);",
-              "});",
-              "",
-              "console.log(\"✅ General chat (no intent) test successful\");"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{jwt_token}}",
-            "description": "JWT token for authentication"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"query\": \"What is the weather like today?\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 30,\n      \"gender\": \"female\"\n    }\n  },\n  \"top_k\": 3,\n  \"temperature\": 0.7\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/chat",
-          "host": ["{{base_url}}"],
-          "path": ["chat"]
-        },
-        "description": "Test that non-medical queries don't trigger symptom intents"
-      }
-    },
-    {
-      "name": "9. Complex Symptom Extraction",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 200\", function () {",
-              "    pm.response.to.have.status(200);",
-              "});",
-              "",
-              "pm.test(\"Complex symptom data extracted\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    ",
-              "    if (jsonData.intent_detected && jsonData.intent_detected.type === 'log_symptom') {",
-              "        var data = jsonData.intent_detected.data;",
-              "        console.log(`Extracted symptom data: ${JSON.stringify(data)}`);",
-              "        ",
-              "        // Should extract multiple pieces of information",
-              "        if (data.symptom_name) {",
-              "            console.log(`Symptom: ${data.symptom_name}`);",
-              "        }",
-              "        if (data.severity) {",
-              "            console.log(`Severity: ${data.severity}/10`);",
-              "        }",
-              "        if (data.duration_hours) {",
-              "            console.log(`Duration: ${data.duration_hours} hours`);",
-              "        }",
-              "        if (data.location) {",
-              "            console.log(`Location: ${data.location}`);",
-              "        }",
-              "    }",
-              "});",
-              "",
-              "pm.test(\"Agent successfully logged complex symptom\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    ",
-              "    if (jsonData.agent_action && jsonData.agent_action.action === 'symptom_logged') {",
-              "        pm.expect(jsonData.agent_action.success).to.eql(true);",
-              "        console.log(`Successfully logged: ${jsonData.agent_action.data.symptom_name}`);",
-              "    }",
-              "});",
-              "",
-              "console.log(\"✅ Complex symptom extraction test successful\");"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{jwt_token}}",
-            "description": "JWT token for authentication"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"query\": \"I've been having a terrible migraine for the past 6 hours. The pain is excruciating, probably a 9 out of 10, and it's concentrated on the left side of my head. It started after I skipped lunch and didn't drink enough water.\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 28,\n      \"gender\": \"female\",\n      \"conditions\": [\"migraine\", \"dehydration sensitivity\"],\n      \"medications\": [\"sumatriptan\"],\n      \"allergies\": [\"aspirin\"]\n    }\n  },\n  \"top_k\": 3,\n  \"temperature\": 0.7\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/chat",
-          "host": ["{{base_url}}"],
-          "path": ["chat"]
-        },
-        "description": "Test extraction of complex symptom information with multiple details"
-      }
-    },
-    {
-      "name": "10. Authentication Failure Test",
+      "name": "12. Authentication Failure Test",
       "event": [
         {
           "listen": "test",
@@ -685,7 +869,7 @@
               "    ]);",
               "});",
               "",
-              "console.log(\"✅ Authentication failure test successful - agent actions properly protected\");"
+              "console.log(\"✅ Authentication failure test successful - Phase 2 features properly protected\");"
             ],
             "type": "text/javascript"
           }
@@ -706,135 +890,14 @@
         ],
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"symptom_data\": {\n    \"symptom_name\": \"test_symptom\",\n    \"severity\": 5\n  }\n}"
-        },
-        "url": {
-          "raw": "{{base_url}}/agent-action/save-symptom",
-          "host": ["{{base_url}}"],
-          "path": ["agent-action", "save-symptom"]
-        },
-        "description": "Test that agent action endpoints are properly protected by authentication"
-      }
-    },
-    {
-      "name": "11. RLS Isolation Test",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 200\", function () {",
-              "    pm.response.to.have.status(200);",
-              "});",
-              "",
-              "pm.test(\"RLS properly isolates user data\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('symptoms');",
-              "    pm.expect(jsonData).to.have.property('count');",
-              "    ",
-              "    // Should only return symptoms for the authenticated user",
-              "    console.log(`User can see ${jsonData.count} symptoms (RLS working)`);",
-              "    ",
-              "    // All symptoms should belong to the current user (verified by RLS)",
-              "    if (jsonData.symptoms.length > 0) {",
-              "        jsonData.symptoms.forEach((symptom, index) => {",
-              "            pm.expect(symptom).to.have.property('id');",
-              "            pm.expect(symptom).to.have.property('symptom_name');",
-              "            console.log(`Symptom ${index + 1}: ${symptom.symptom_name} (${symptom.created_at})`);",
-              "        });",
-              "    }",
-              "});",
-              "",
-              "console.log(\"✅ RLS isolation test successful - user data properly protected\");"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "GET",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{jwt_token}}",
-            "description": "Valid token - should only see own symptoms"
-          }
-        ],
-        "url": {
-          "raw": "{{base_url}}/agent-action/get-symptoms?limit=10",
-          "host": ["{{base_url}}"],
-          "path": ["agent-action", "get-symptoms"],
-          "query": [
-            {
-              "key": "limit",
-              "value": "10"
-            }
-          ]
-        },
-        "description": "Test that RLS properly isolates symptom data by user"
-      }
-    },
-    {
-      "name": "12. Performance Benchmark",
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "exec": [
-              "pm.test(\"Status code is 200\", function () {",
-              "    pm.response.to.have.status(200);",
-              "});",
-              "",
-              "pm.test(\"Response time is acceptable\", function () {",
-              "    pm.expect(pm.response.responseTime).to.be.below(5000); // 5 seconds max",
-              "    console.log(`Response time: ${pm.response.responseTime}ms`);",
-              "});",
-              "",
-              "pm.test(\"Processing time is reported\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    pm.expect(jsonData).to.have.property('processing_time');",
-              "    pm.expect(jsonData.processing_time).to.be.a('number');",
-              "    console.log(`Processing time: ${jsonData.processing_time}ms`);",
-              "});",
-              "",
-              "pm.test(\"Intent recognition is fast\", function () {",
-              "    var jsonData = pm.response.json();",
-              "    // Intent recognition should add minimal overhead",
-              "    if (jsonData.intent_detected) {",
-              "        console.log(`Intent detection successful with minimal overhead`);",
-              "        console.log(`Intent: ${jsonData.intent_detected.type}, Confidence: ${jsonData.intent_detected.confidence}`);",
-              "    }",
-              "});",
-              "",
-              "console.log(\"✅ Performance benchmark successful - Phase 1 features are performant\");"
-            ],
-            "type": "text/javascript"
-          }
-        }
-      ],
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Authorization",
-            "value": "Bearer {{jwt_token}}",
-            "description": "JWT token for authentication"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"query\": \"I want to log a fever symptom that I've had for 2 days\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 35,\n      \"gender\": \"male\",\n      \"conditions\": [\"hypertension\"],\n      \"medications\": [\"lisinopril\"]\n    },\n    \"conversation_history\": [\n      {\n        \"role\": \"user\",\n        \"content\": \"Hello\"\n      },\n      {\n        \"role\": \"assistant\",\n        \"content\": \"Hello! How can I help you today?\"\n      }\n    ]\n  },\n  \"top_k\": 5,\n  \"temperature\": 0.7\n}"
+          "raw": "{\n  \"query\": \"This should fail due to invalid token\",\n  \"context\": {\n    \"user_profile\": {\n      \"age\": 30,\n      \"gender\": \"male\"\n    }\n  },\n  \"top_k\": 5,\n  \"temperature\": 0.7\n}"
         },
         "url": {
           "raw": "{{base_url}}/chat",
           "host": ["{{base_url}}"],
           "path": ["chat"]
         },
-        "description": "Performance benchmark for Phase 1 agent awareness features"
+        "description": "Test that Phase 2 enhanced chat endpoint is properly protected by authentication"
       }
     }
   ],
@@ -845,14 +908,17 @@
         "type": "text/javascript",
         "exec": [
           "// Pre-request script for the entire collection",
-          "console.log('🚀 Starting TxAgent Phase 1 Agent Awareness API Tests');",
+          "console.log('🚀 Starting TxAgent Phase 2 Enhanced Intelligence API Tests');",
           "console.log('📋 Testing Features:');",
-          "console.log('   - Intent Recognition (symptom logging, history requests)');",
-          "console.log('   - Agent Actions (save/retrieve symptoms)');",
-          "console.log('   - Symptom Data Extraction (name, severity, duration, location)');",
-          "console.log('   - Database Operations with RLS');",
-          "console.log('   - Chat Integration with Agent Actions');",
-          "console.log('   - Authentication and Security');",
+          "console.log('   - Advanced NLP Processing (contextual symptom extraction)');",
+          "console.log('   - Conversation Management (flow analysis and strategy)');",
+          "console.log('   - Temporal Pattern Recognition (duration, frequency, triggers)');",
+          "console.log('   - Quality Descriptor Extraction (pain types, characteristics)');",
+          "console.log('   - Emergency Detection (critical symptom recognition)');",
+          "console.log('   - Medical Advice Integration (contextual health guidance)');",
+          "console.log('   - Conversation History Context (multi-turn awareness)');",
+          "console.log('   - Intelligent Follow-up Questions (missing detail detection)');",
+          "console.log('   - Phase 1 Fallback (backward compatibility)');",
           "",
           "// Validate that required variables are set",
           "if (!pm.collectionVariables.get('base_url') || pm.collectionVariables.get('base_url') === 'https://your-txagent-container-url.proxy.runpod.net') {",

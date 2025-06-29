@@ -20,9 +20,13 @@ from llm import LLMHandler
 from core.auth_service import auth_service, get_user_id, get_auth_token, validate_token
 from core.logging import request_logger, log_request
 
-# Import new agent awareness components
+# Import Phase 1 agent awareness components
 from intent_recognition import IntentRecognizer
 from agent_actions import agent_actions
+
+# Import Phase 2 enhanced components
+from nlp_processor import AdvancedNLPProcessor
+from conversation_manager import ConversationManager
 
 # Load environment variables
 load_dotenv()
@@ -40,14 +44,15 @@ request_logger.log_system_event("startup", {
     "device": os.getenv("DEVICE", "cuda"),
     "port": os.getenv("PORT", "8000"),
     "log_level": os.getenv("LOG_LEVEL", "INFO"),
-    "agent_awareness": True
+    "agent_awareness": True,
+    "phase": "2"
 })
 
 # Initialize FastAPI app
 app = FastAPI(
     title="TxAgent Hybrid Container",
-    description="Medical RAG Vector Uploader with BioBERT embeddings, chat capabilities, and agent awareness",
-    version="1.1.0"
+    description="Medical RAG Vector Uploader with BioBERT embeddings, chat capabilities, and Phase 2 agent awareness",
+    version="1.2.0"
 )
 
 # Add CORS middleware with extensive logging
@@ -74,13 +79,23 @@ except Exception as e:
     request_logger.log_system_event("model_load", {"status": "failed", "error": str(e)}, level="warning")
     llm_handler = None
 
-# Initialize intent recognizer for agent awareness
+# Initialize Phase 1 intent recognizer
 try:
     intent_recognizer = IntentRecognizer()
-    request_logger.log_system_event("intent_recognition_load", {"status": "success"})
+    request_logger.log_system_event("intent_recognition_load", {"status": "success", "phase": "1"})
 except Exception as e:
     request_logger.log_system_event("intent_recognition_load", {"status": "failed", "error": str(e)}, level="error")
     intent_recognizer = None
+
+# Initialize Phase 2 components
+try:
+    nlp_processor = AdvancedNLPProcessor()
+    conversation_manager = ConversationManager()
+    request_logger.log_system_event("phase2_components_load", {"status": "success", "components": ["nlp_processor", "conversation_manager"]})
+except Exception as e:
+    request_logger.log_system_event("phase2_components_load", {"status": "failed", "error": str(e)}, level="error")
+    nlp_processor = None
+    conversation_manager = None
 
 # Track startup time for uptime calculation
 startup_time = time.time()
@@ -129,6 +144,7 @@ class ChatResponse(BaseModel):
     status: str = Field("success", description="Status of the request")
     agent_action: Optional[Dict[str, Any]] = Field(None, description="Agent action taken if any")
     intent_detected: Optional[Dict[str, Any]] = Field(None, description="Intent detection results")
+    conversation_analysis: Optional[Dict[str, Any]] = Field(None, description="Phase 2 conversation analysis")
 
 class AgentSessionRequest(BaseModel):
     session_data: Dict[str, Any] = {}
@@ -145,7 +161,7 @@ class HealthResponse(BaseModel):
     status: str = "healthy"
     model: str = os.getenv("MODEL_NAME", "dmis-lab/biobert-v1.1")
     device: str = os.getenv("DEVICE", "cuda")
-    version: str = "1.1.0"
+    version: str = "1.2.0"
     uptime: Optional[int] = None
     memory_usage: Optional[str] = None
 
@@ -284,7 +300,7 @@ def test_rpc(authorization: Optional[str] = Header(None)):
     except Exception as e:
         return {"error": str(e)}
 
-# Agent Action Endpoints for Phase 1
+# Agent Action Endpoints for Phase 1 & 2
 @app.post("/agent-action/save-symptom")
 async def save_symptom_endpoint(request: Request):
     """Save a symptom to the user's profile."""
@@ -470,8 +486,7 @@ async def chat(
     
     This endpoint performs similarity search to find relevant documents,
     then generates a response using an LLM based on the query and context.
-    Now enhanced to utilize user profile and conversation history for personalized responses,
-    and includes intent recognition for agent actions like symptom logging.
+    Now enhanced with Phase 2 conversation management for intelligent symptom tracking.
     """
     logger.info(f"🚀 CHAT REQUEST: {request.query[:50]}...")
     
@@ -497,112 +512,140 @@ async def chat(
         else:
             logger.info("ℹ️ CHAT: No context provided - using query only")
         
-        # PHASE 1: Intent Recognition
+        start_time = time.time()
+        
+        # PHASE 2: Enhanced Conversation Management
+        conversation_result = None
+        if conversation_manager and conversation_history:
+            logger.info("🔍 CHAT: Using Phase 2 conversation management")
+            conversation_result = conversation_manager.process_conversation_turn(
+                request.query, 
+                conversation_history, 
+                user_profile
+            )
+            logger.info(f"🔍 CHAT: Conversation strategy: {conversation_result.get('strategy', {}).get('type', 'unknown')}")
+        
+        # PHASE 1: Intent Recognition (fallback or parallel processing)
         intent_type = "general_chat"
         intent_confidence = 0.0
         intent_data = {}
         agent_action_result = None
         
-        if intent_recognizer:
+        # Use Phase 2 data if available, otherwise fall back to Phase 1
+        if conversation_result:
+            strategy = conversation_result.get("strategy", {})
+            symptom_data = conversation_result.get("symptom_data", {})
+            
+            if strategy.get("action") == "log_symptom" and conversation_result.get("should_log_symptom"):
+                intent_type = "log_symptom"
+                intent_confidence = strategy.get("confidence", 0.8)
+                intent_data = symptom_data
+            elif strategy.get("action") == "get_symptom_history":
+                intent_type = "get_symptom_history"
+                intent_confidence = strategy.get("confidence", 0.8)
+                intent_data = symptom_data
+        elif intent_recognizer:
+            # Fall back to Phase 1 intent recognition
+            logger.info("🔍 CHAT: Using Phase 1 intent recognition")
             intent_type, intent_confidence, intent_data = intent_recognizer.detect_intent(
                 request.query, 
                 conversation_history
             )
-            
-            logger.info(f"🔍 INTENT: Detected '{intent_type}' with confidence {intent_confidence}")
-            
-            # Handle symptom logging intent
-            if intent_type == "log_symptom" and intent_confidence > 0.5:
-                if intent_data.get("symptom_name"):
-                    # We have enough data to log the symptom
-                    try:
-                        logger.info(f"🔍 INTENT: Attempting to log symptom: {intent_data}")
-                        
-                        # Create a mock request for the agent action
-                        class MockRequest:
-                            def __init__(self, headers, json_data):
-                                self.headers = headers
-                                self._json_data = json_data
-                            
-                            async def json(self):
-                                return self._json_data
-                        
-                        mock_request = MockRequest(
-                            headers={'Authorization': authorization},
-                            json_data={"symptom_data": intent_data}
-                        )
-                        
-                        save_result = await agent_actions.save_symptom(mock_request)
-                        
-                        if save_result.status_code == 200:
-                            result_data = json.loads(save_result.body.decode())
-                            agent_action_result = {
-                                "action": "symptom_logged",
-                                "success": True,
-                                "data": result_data
-                            }
-                            logger.info(f"✅ INTENT: Successfully logged symptom: {intent_data.get('symptom_name')}")
-                        else:
-                            agent_action_result = {
-                                "action": "symptom_logging_failed", 
-                                "success": False,
-                                "error": "Failed to save symptom"
-                            }
-                            logger.error(f"❌ INTENT: Failed to log symptom")
-                    except Exception as e:
-                        logger.error(f"❌ INTENT: Error in symptom logging: {str(e)}")
-                        agent_action_result = {
-                            "action": "symptom_logging_failed",
-                            "success": False, 
-                            "error": str(e)
-                        }
-                else:
-                    logger.info("🔍 INTENT: Symptom logging intent detected but insufficient data")
-                    agent_action_result = {
-                        "action": "symptom_logging_incomplete",
-                        "success": False,
-                        "message": "I detected you want to log a symptom, but I need more details."
-                    }
-            
-            # Handle symptom history intent
-            elif intent_type == "get_symptom_history" and intent_confidence > 0.5:
+        
+        logger.info(f"🔍 INTENT: Detected '{intent_type}' with confidence {intent_confidence}")
+        
+        # Handle symptom logging intent
+        if intent_type == "log_symptom" and intent_confidence > 0.5:
+            if intent_data.get("symptom_name"):
+                # We have enough data to log the symptom
                 try:
-                    logger.info(f"🔍 INTENT: Attempting to retrieve symptom history: {intent_data}")
+                    logger.info(f"🔍 INTENT: Attempting to log symptom: {intent_data}")
                     
                     # Create a mock request for the agent action
                     class MockRequest:
-                        def __init__(self, headers, query_params):
+                        def __init__(self, headers, json_data):
                             self.headers = headers
-                            self.query_params = query_params
+                            self._json_data = json_data
+                        
+                        async def json(self):
+                            return self._json_data
                     
                     mock_request = MockRequest(
                         headers={'Authorization': authorization},
-                        query_params=intent_data
+                        json_data={"symptom_data": intent_data}
                     )
                     
-                    history_result = await agent_actions.get_symptoms(mock_request)
+                    save_result = await agent_actions.save_symptom(mock_request)
                     
-                    if history_result.status_code == 200:
-                        result_data = json.loads(history_result.body.decode())
+                    if save_result.status_code == 200:
+                        result_data = json.loads(save_result.body.decode())
                         agent_action_result = {
-                            "action": "symptom_history_retrieved",
+                            "action": "symptom_logged",
                             "success": True,
                             "data": result_data
                         }
-                        logger.info(f"✅ INTENT: Successfully retrieved symptom history")
+                        logger.info(f"✅ INTENT: Successfully logged symptom: {intent_data.get('symptom_name')}")
                     else:
                         agent_action_result = {
-                            "action": "symptom_history_failed",
+                            "action": "symptom_logging_failed", 
                             "success": False,
-                            "error": "Failed to retrieve symptom history"
+                            "error": "Failed to save symptom"
                         }
+                        logger.error(f"❌ INTENT: Failed to log symptom")
                 except Exception as e:
-                    logger.error(f"❌ INTENT: Error retrieving symptom history: {str(e)}")
+                    logger.error(f"❌ INTENT: Error in symptom logging: {str(e)}")
+                    agent_action_result = {
+                        "action": "symptom_logging_failed",
+                        "success": False, 
+                        "error": str(e)
+                    }
+            else:
+                logger.info("🔍 INTENT: Symptom logging intent detected but insufficient data")
+                agent_action_result = {
+                    "action": "symptom_logging_incomplete",
+                    "success": False,
+                    "message": "I detected you want to log a symptom, but I need more details."
+                }
+        
+        # Handle symptom history intent
+        elif intent_type == "get_symptom_history" and intent_confidence > 0.5:
+            try:
+                logger.info(f"🔍 INTENT: Attempting to retrieve symptom history: {intent_data}")
+                
+                # Create a mock request for the agent action
+                class MockRequest:
+                    def __init__(self, headers, query_params):
+                        self.headers = headers
+                        self.query_params = query_params
+                
+                mock_request = MockRequest(
+                    headers={'Authorization': authorization},
+                    query_params=intent_data
+                )
+                
+                history_result = await agent_actions.get_symptoms(mock_request)
+                
+                if history_result.status_code == 200:
+                    result_data = json.loads(history_result.body.decode())
+                    agent_action_result = {
+                        "action": "symptom_history_retrieved",
+                        "success": True,
+                        "data": result_data
+                    }
+                    logger.info(f"✅ INTENT: Successfully retrieved symptom history")
+                else:
                     agent_action_result = {
                         "action": "symptom_history_failed",
                         "success": False,
-                        "error": str(e)
+                        "error": "Failed to retrieve symptom history"
                     }
+            except Exception as e:
+                logger.error(f"❌ INTENT: Error retrieving symptom history: {str(e)}")
+                agent_action_result = {
+                    "action": "symptom_history_failed",
+                    "success": False,
+                    "error": str(e)
+                }
         
         auth_service.log_auth_event("chat_request", user_context=user_payload, success=True, details={
             "query_length": len(request.query),
@@ -612,10 +655,9 @@ async def chat(
             "has_conversation_history": conversation_history is not None and len(conversation_history) > 0,
             "intent_type": intent_type,
             "intent_confidence": intent_confidence,
-            "agent_action_taken": agent_action_result is not None
+            "agent_action_taken": agent_action_result is not None,
+            "phase2_conversation_management": conversation_result is not None
         })
-        
-        start_time = time.time()
         
         # Perform similarity search - pass the JWT token string
         logger.info(f"🔍 CHAT: Calling similarity_search with JWT token")
@@ -646,29 +688,37 @@ async def chat(
                 base_response = f"Based on the documents I found, here's relevant information: {similar_docs[0]['content'][:200]}..."
                 tokens_used = len(base_response.split())
         
-        # Modify response based on agent actions
-        final_response = base_response
-        if agent_action_result:
-            if agent_action_result["action"] == "symptom_logged" and agent_action_result["success"]:
-                symptom_name = agent_action_result["data"].get("symptom_name", "symptom")
-                final_response = f"✅ I've logged your {symptom_name} in your symptom history.\n\n{base_response}"
-            elif agent_action_result["action"] == "symptom_history_retrieved" and agent_action_result["success"]:
-                symptoms = agent_action_result["data"].get("symptoms", [])
-                if symptoms:
-                    symptom_summary = f"📊 I found {len(symptoms)} symptom entries in your history. "
-                    # Add some basic analysis
-                    if len(symptoms) > 1:
-                        recent_symptom = symptoms[0]  # Most recent
-                        symptom_summary += f"Your most recent entry was '{recent_symptom.get('symptom_name')}' "
-                        if recent_symptom.get('created_at'):
-                            symptom_summary += f"logged recently. "
-                    final_response = f"{symptom_summary}\n\n{base_response}"
-                else:
-                    final_response = "📊 I didn't find any symptoms in your history yet. You can start logging symptoms by telling me about any symptoms you're experiencing.\n\n" + base_response
-            elif agent_action_result["action"] == "symptom_logging_incomplete":
-                final_response = f"🤔 {agent_action_result.get('message', 'I need more details to log your symptom.')}\n\n{base_response}"
-            elif not agent_action_result["success"]:
-                final_response = f"⚠️ I tried to help with your request but encountered an issue: {agent_action_result.get('error', 'Unknown error')}.\n\n{base_response}"
+        # PHASE 2: Enhanced response generation with conversation context
+        if conversation_manager and conversation_result:
+            final_response = conversation_manager.enhance_response_with_context(
+                base_response, 
+                conversation_result, 
+                agent_action_result
+            )
+        else:
+            # Phase 1 response modification
+            final_response = base_response
+            if agent_action_result:
+                if agent_action_result["action"] == "symptom_logged" and agent_action_result["success"]:
+                    symptom_name = agent_action_result["data"].get("symptom_name", "symptom")
+                    final_response = f"✅ I've logged your {symptom_name} in your symptom history.\n\n{base_response}"
+                elif agent_action_result["action"] == "symptom_history_retrieved" and agent_action_result["success"]:
+                    symptoms = agent_action_result["data"].get("symptoms", [])
+                    if symptoms:
+                        symptom_summary = f"📊 I found {len(symptoms)} symptom entries in your history. "
+                        # Add some basic analysis
+                        if len(symptoms) > 1:
+                            recent_symptom = symptoms[0]  # Most recent
+                            symptom_summary += f"Your most recent entry was '{recent_symptom.get('symptom_name')}' "
+                            if recent_symptom.get('created_at'):
+                                symptom_summary += f"logged recently. "
+                        final_response = f"{symptom_summary}\n\n{base_response}"
+                    else:
+                        final_response = "📊 I didn't find any symptoms in your history yet. You can start logging symptoms by telling me about any symptoms you're experiencing.\n\n" + base_response
+                elif agent_action_result["action"] == "symptom_logging_incomplete":
+                    final_response = f"🤔 {agent_action_result.get('message', 'I need more details to log your symptom.')}\n\n{base_response}"
+                elif not agent_action_result["success"]:
+                    final_response = f"⚠️ I tried to help with your request but encountered an issue: {agent_action_result.get('error', 'Unknown error')}.\n\n{base_response}"
         
         # Format sources for response
         sources = [
@@ -692,7 +742,8 @@ async def chat(
             "used_user_profile": user_profile is not None,
             "used_conversation_history": conversation_history is not None and len(conversation_history) > 0,
             "intent_detected": intent_type,
-            "agent_action_taken": agent_action_result is not None
+            "agent_action_taken": agent_action_result is not None,
+            "phase2_conversation_management": conversation_result is not None
         })
         
         # Build response with agent action metadata
@@ -712,6 +763,15 @@ async def chat(
                 "type": intent_type,
                 "confidence": intent_confidence,
                 "data": intent_data
+            }
+        
+        # Add Phase 2 conversation analysis if available
+        if conversation_result:
+            response_data["conversation_analysis"] = {
+                "strategy": conversation_result.get("strategy"),
+                "flow_analysis": conversation_result.get("flow_analysis"),
+                "follow_up_needed": conversation_result.get("follow_up_needed"),
+                "phase": "2"
             }
         
         return ChatResponse(**response_data)
@@ -911,7 +971,7 @@ async def health_check(
         "status": "healthy",
         "model": os.getenv("MODEL_NAME", "dmis-lab/biobert-v1.1"),
         "device": os.getenv("DEVICE", "cuda"),
-        "version": "1.1.0",
+        "version": "1.2.0",
         "uptime": uptime_seconds,
         "memory_usage": memory_usage,
         "endpoints": [
@@ -934,7 +994,11 @@ async def health_check(
             "conversation_history_support": True,
             "agent_awareness": True,
             "intent_recognition": intent_recognizer is not None,
-            "symptom_tracking": True
+            "symptom_tracking": True,
+            "phase1_features": True,
+            "phase2_features": nlp_processor is not None and conversation_manager is not None,
+            "advanced_nlp": nlp_processor is not None,
+            "conversation_management": conversation_manager is not None
         }
     }
     
@@ -986,7 +1050,7 @@ async def health_check(
         "status": "healthy",
         "session_id": x_session_id,
         "session_updated": health_data.get("session_updated", False),
-        "agent_awareness": True
+        "phase2_features": health_data["capabilities"]["phase2_features"]
     })
     
     return health_data
