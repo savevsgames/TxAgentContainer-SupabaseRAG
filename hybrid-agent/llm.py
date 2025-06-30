@@ -139,8 +139,23 @@ class LLMHandler:
         """
         messages = []
         
-        # Build system message with user profile
-        system_content = "You are a medical AI assistant. Provide helpful, accurate medical information based on the provided context and user profile."
+        # Build system message with enhanced instructions for Symptom Savior
+        system_content = """You are Symptom Savior, a professional and empathetic medical AI assistant. Your primary role is to provide helpful, accurate medical information based on the provided context and user profile.
+
+Key Guidelines:
+- Be concise and human-like in your responses
+- Avoid lengthy explanations unless specifically requested
+- Never mention "medical documents" or "sources" directly
+- Do not use bullet points unless the user specifically asks for a list
+- Provide natural, conversational responses
+- Focus on being helpful without being verbose
+- Act like a knowledgeable healthcare professional having a conversation
+
+Response Style:
+- Keep responses under 150 words unless more detail is specifically requested
+- Use a warm, professional tone similar to a caring nurse or doctor
+- Avoid medical jargon when simpler terms will do
+- Be direct and clear in your communication"""
         
         # Add user profile to system message if available
         if user_profile:
@@ -152,13 +167,10 @@ class LLMHandler:
         # Add document context
         if context:
             context_text = "\n\n".join([
-                f"Document {i+1}:\n{doc['content']}"
+                f"Relevant Information {i+1}:\n{doc['content']}"
                 for i, doc in enumerate(context)
             ])
-            system_content += f"\n\nRelevant Medical Documents:\n{context_text}"
-        
-        # Add medical disclaimer
-        system_content += "\n\nIMPORTANT: Always include appropriate medical disclaimers. This information is for educational purposes only and is not a substitute for professional medical advice, diagnosis, or treatment."
+            system_content += f"\n\nRelevant Medical Information:\n{context_text}"
         
         messages.append({
             "role": "system",
@@ -222,7 +234,7 @@ class LLMHandler:
                 model=self.model,
                 messages=messages,
                 temperature=temperature,
-                max_tokens=1000
+                max_tokens=500  # Reduced from 1000 to encourage more concise responses
             )
             
             generated_response = response.choices[0].message.content
@@ -237,10 +249,8 @@ class LLMHandler:
             fallback_response = "I apologize, but I encountered an error while generating a response. "
             
             if context:
-                fallback_response += f"Based on the documents I found, here's some relevant information: {context[0]['content'][:200]}..."
+                fallback_response += f"Based on the information I found, here's what I can tell you: {context[0]['content'][:200]}..."
             else:
                 fallback_response += "Please try rephrasing your question or ensure you have uploaded relevant medical documents."
-            
-            fallback_response += "\n\nPlease consult with a healthcare professional for personalized medical advice."
             
             return fallback_response

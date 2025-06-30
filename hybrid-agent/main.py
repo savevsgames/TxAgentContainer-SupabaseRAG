@@ -29,7 +29,7 @@ from agent_actions import agent_actions
 from nlp_processor import AdvancedNLPProcessor
 from conversation_manager import ConversationManager
 
-# Import tracking modules
+# Import tracking components
 from symptom_tracker import symptom_tracker
 from treatment_tracker import treatment_tracker
 from appointment_tracker import appointment_tracker
@@ -52,13 +52,13 @@ request_logger.log_system_event("startup", {
     "log_level": os.getenv("LOG_LEVEL", "INFO"),
     "agent_awareness": True,
     "phase": "2.8",
-    "tracking_modules": ["symptoms", "treatments", "appointments"]
+    "tracking_loops": True
 })
 
 # Initialize FastAPI app
 app = FastAPI(
     title="TxAgent Hybrid Container",
-    description="Medical RAG Vector Uploader with BioBERT embeddings, chat capabilities, and comprehensive health tracking",
+    description="Medical RAG Vector Uploader with BioBERT embeddings, chat capabilities, and enhanced conversational tracking loops",
     version="1.3.0"
 )
 
@@ -153,7 +153,7 @@ class ChatResponse(BaseModel):
     agent_action: Optional[Dict[str, Any]] = Field(None, description="Agent action taken if any")
     intent_detected: Optional[Dict[str, Any]] = Field(None, description="Intent detection results")
     conversation_analysis: Optional[Dict[str, Any]] = Field(None, description="Phase 2 conversation analysis")
-    tracking_session: Optional[Dict[str, Any]] = Field(None, description="Active tracking session information")
+    tracking_session_id: Optional[str] = Field(None, description="ID of tracking session if active")
 
 class AgentSessionRequest(BaseModel):
     session_data: Dict[str, Any] = {}
@@ -194,7 +194,6 @@ async def log_requests(request: Request, call_next):
     auth_header = request.headers.get("Authorization")
     
     logger.info(f"🚀 REQUEST START: {request.method} {request.url.path}")
-    logger.info(f"🔍 Request headers: {dict(request.headers)}")
     
     if auth_header and auth_header.startswith("Bearer "):
         try:
@@ -205,7 +204,6 @@ async def log_requests(request: Request, call_next):
             logger.info(f"✅ Successfully authenticated user: {user_id}")
         except Exception as e:
             logger.error(f"❌ Token validation failed in middleware: {str(e)}")
-            logger.error(f"❌ Exception type: {type(e).__name__}")
             auth_service.log_auth_event("token_validation", success=False, details={"error": str(e)})
     else:
         logger.info("ℹ️ No Authorization header found or invalid format")
@@ -249,8 +247,6 @@ async def log_requests(request: Request, call_next):
 
 # Background task to process document
 def process_document_task(job_id: str, file_path: str, metadata: Dict[str, Any], user_id: str, jwt: str):
-    print(f"📦 Background task started for job {job_id}")
-    
     """Background task to process and embed a document."""
     request_logger.log_system_event("background_task_start", {
         "job_id": job_id,
@@ -338,65 +334,6 @@ async def get_symptom_summary_endpoint(request: Request):
     logger.info("🚀 AGENT_ACTION: Get symptom summary endpoint called")
     return await agent_actions.get_symptom_summary(request)
 
-# New tracking session endpoints
-@app.post("/tracking/save-session")
-async def save_tracking_session(request: Request):
-    """Save a completed tracking session to the database."""
-    try:
-        # Get authorization header
-        authorization = request.headers.get("Authorization")
-        if not authorization:
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Authorization header missing"}
-            )
-        
-        # Extract and validate token
-        token = auth_service.extract_token_from_header(authorization)
-        user_id, user_payload = auth_service.validate_token_and_get_user(token)
-        
-        # Parse request body
-        data = await request.json()
-        session_id = data.get("session_id")
-        tracking_type = data.get("tracking_type")
-        
-        if not session_id or not tracking_type:
-            return JSONResponse(
-                status_code=400,
-                content={"detail": "session_id and tracking_type are required"}
-            )
-        
-        # Save using appropriate tracker
-        if tracking_type == "symptom":
-            result = await symptom_tracker.save_to_database(session_id, token)
-        elif tracking_type == "treatment":
-            result = await treatment_tracker.save_to_database(session_id, token)
-        elif tracking_type == "appointment":
-            result = await appointment_tracker.save_to_database(session_id, token)
-        else:
-            return JSONResponse(
-                status_code=400,
-                content={"detail": f"Unknown tracking type: {tracking_type}"}
-            )
-        
-        if result.get("error"):
-            return JSONResponse(
-                status_code=500,
-                content={"detail": result["error"]}
-            )
-        
-        return JSONResponse(
-            status_code=200,
-            content=result
-        )
-        
-    except Exception as e:
-        logger.error(f"❌ Error saving tracking session: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content={"detail": f"Failed to save tracking session: {str(e)}"}
-        )
-
 @app.post("/embed", response_model=EmbedResponse)
 @log_request("/embed")
 async def embed_text(
@@ -469,9 +406,6 @@ async def process_document(
     The document must exist in Supabase Storage and be accessible by the user.
     """
     logger.info(f"🚀 PROCESS DOCUMENT REQUEST: {request.file_path}")
-
-    print("✅ Hit process-document route")
-
     
     try:
         # Validate JWT and get user ID using centralized auth service
@@ -521,7 +455,7 @@ async def process_document(
 @log_request("/embedding-jobs")
 def get_job_status(
     job_id: str,
-    authorization: Optional[str] = Header(None)  # Add this line
+    authorization: Optional[str] = Header(None)
 ):
     """
     Get the status of an embedding job.
@@ -564,7 +498,7 @@ async def chat(
     
     This endpoint performs similarity search to find relevant documents,
     then generates a response using an LLM based on the query and context.
-    Now enhanced with comprehensive health tracking capabilities.
+    Enhanced with conversational tracking loops for symptoms, treatments, and appointments.
     """
     logger.info(f"🚀 CHAT REQUEST: {request.query[:50]}...")
     
@@ -592,58 +526,73 @@ async def chat(
         
         start_time = time.time()
         
-        # Check if this is continuing a tracking session
+        # Check if we're continuing an existing tracking session
         if request.tracking_session_id:
             logger.info(f"🔍 CHAT: Continuing tracking session {request.tracking_session_id}")
             
-            if conversation_manager:
-                tracking_result = conversation_manager.continue_tracking_session(
-                    request.tracking_session_id,
-                    request.query,
-                    user_id
-                )
-                
-                # Handle session completion
-                if tracking_result.get("status") == "awaiting_confirmation":
-                    # Check if user confirmed
-                    if request.query.lower().strip() in ["yes", "y", "correct", "save it", "looks good"]:
-                        # Save to database
-                        tracking_type = tracking_result.get("tracking_type", "symptom")
-                        
-                        if tracking_type == "symptom":
-                            save_result = await symptom_tracker.save_to_database(request.tracking_session_id, token)
-                        elif tracking_type == "treatment":
-                            save_result = await treatment_tracker.save_to_database(request.tracking_session_id, token)
-                        elif tracking_type == "appointment":
-                            save_result = await appointment_tracker.save_to_database(request.tracking_session_id, token)
-                        else:
-                            save_result = {"error": "Unknown tracking type"}
-                        
-                        if save_result.get("success"):
-                            final_response = f"✅ {save_result['message']}"
-                            tracking_session = None  # Session is complete
-                        else:
-                            final_response = f"❌ Sorry, there was an error saving your {tracking_type}: {save_result.get('error', 'Unknown error')}"
-                            tracking_session = tracking_result
+            # Continue the tracking session
+            tracking_result = conversation_manager.continue_tracking_session(
+                request.tracking_session_id,
+                request.query,
+                user_id
+            )
+            
+            # If session is awaiting confirmation, handle save to database
+            if tracking_result.get("status") == "awaiting_confirmation":
+                confirmation_response = request.query.lower().strip()
+                if confirmation_response in ["yes", "y", "correct", "save", "save it"]:
+                    # Save to database
+                    session_id = request.tracking_session_id
+                    tracking_type = tracking_result.get("tracking_type")
+                    
+                    if tracking_type == "symptom":
+                        save_result = await symptom_tracker.save_to_database(session_id, token)
+                    elif tracking_type == "treatment":
+                        save_result = await treatment_tracker.save_to_database(session_id, token)
+                    elif tracking_type == "appointment":
+                        save_result = await appointment_tracker.save_to_database(session_id, token)
                     else:
-                        # User wants to make changes or said no
-                        final_response = f"No problem! What would you like to change about your {tracking_result.get('tracking_type', 'entry')}?"
-                        tracking_session = tracking_result
+                        save_result = {"error": "Unknown tracking type"}
+                    
+                    if save_result.get("success"):
+                        final_response = save_result["message"]
+                    else:
+                        final_response = f"I'm sorry, there was an error saving your data: {save_result.get('error', 'Unknown error')}"
+                    
+                    return ChatResponse(
+                        response=final_response,
+                        sources=[],
+                        processing_time=int((time.time() - start_time) * 1000),
+                        model="Symptom Savior",
+                        tokens_used=0,
+                        status="success",
+                        tracking_session_id=None  # Session is complete
+                    )
                 else:
-                    # Continue with tracking session
-                    final_response = tracking_result["message"]
-                    tracking_session = tracking_result
-                
-                processing_time = int((time.time() - start_time) * 1000)
+                    # User wants to make changes
+                    final_response = "What would you like to change about the information I collected?"
+                    
+                    return ChatResponse(
+                        response=final_response,
+                        sources=[],
+                        processing_time=int((time.time() - start_time) * 1000),
+                        model="Symptom Savior",
+                        tokens_used=0,
+                        status="success",
+                        tracking_session_id=request.tracking_session_id
+                    )
+            else:
+                # Continue with the tracking session
+                final_response = tracking_result["message"]
                 
                 return ChatResponse(
                     response=final_response,
                     sources=[],
-                    processing_time=processing_time,
-                    model="BioBERT",
-                    tokens_used=len(final_response.split()),
+                    processing_time=int((time.time() - start_time) * 1000),
+                    model="Symptom Savior",
+                    tokens_used=0,
                     status="success",
-                    tracking_session=tracking_session
+                    tracking_session_id=tracking_result.get("tracking_session_id")
                 )
         
         # PHASE 2.8: Enhanced Conversation Management with improved bedside manner
@@ -658,284 +607,154 @@ async def chat(
             )
             logger.info(f"🔍 CHAT: Conversation strategy: {conversation_result.get('strategy', {}).get('type', 'unknown')}")
         
-        # Handle tracking loops
-        if conversation_result and conversation_result.get("strategy", {}).get("type").endswith("_tracking_loop"):
-            response_data = conversation_result.get("response_data", {})
-            final_response = response_data.get("message", "I'd like to help you track that information.")
+        # Handle conversational strategies (no LLM needed)
+        strategy = conversation_result.get("strategy", {}) if conversation_result else {}
+        strategy_type = strategy.get("type", "general_conversation")
+        
+        # For tracking loops, greeting, emergency, and general conversation - use conversation manager response directly
+        if strategy_type in [
+            "symptom_tracking_loop", "treatment_tracking_loop", "appointment_tracking_loop",
+            "greeting", "emergency_response", "general_conversation", "history_request"
+        ]:
+            logger.info(f"🔍 CHAT: Using conversation manager response for strategy: {strategy_type}")
             
-            processing_time = int((time.time() - start_time) * 1000)
+            response_data = conversation_result.get("response_data", {})
+            final_response = response_data.get("message", "I'm here to help you track your health information.")
+            
+            # Add medical advice if present (but no disclaimer since it's in the UI)
+            medical_advice = response_data.get("medical_advice", "")
+            if medical_advice and "This information is for educational purposes" not in medical_advice:
+                final_response += f"\n\n💡 {medical_advice}"
+            
+            # Handle tracking session continuation
+            tracking_session_id = response_data.get("tracking_session_id")
             
             return ChatResponse(
                 response=final_response,
                 sources=[],
-                processing_time=processing_time,
-                model="BioBERT",
-                tokens_used=len(final_response.split()),
+                processing_time=int((time.time() - start_time) * 1000),
+                model="Symptom Savior",
+                tokens_used=0,
                 status="success",
                 conversation_analysis=conversation_result,
-                tracking_session={
-                    "session_id": response_data.get("tracking_session_id"),
-                    "tracking_type": response_data.get("tracking_type"),
-                    "progress": response_data.get("progress"),
-                    "status": "active"
-                }
+                tracking_session_id=tracking_session_id
             )
         
-        # PHASE 1: Intent Recognition (fallback or parallel processing)
-        intent_type = "general_chat"
-        intent_confidence = 0.0
-        intent_data = {}
-        agent_action_result = None
-        
-        # Use Phase 2 data if available, otherwise fall back to Phase 1
-        if conversation_result:
-            strategy = conversation_result.get("strategy", {})
-            extracted_data = conversation_result.get("extracted_data", {})
+        # For health_information strategy - use LLM with conversation manager introduction
+        elif strategy_type == "health_information":
+            logger.info("🔍 CHAT: Using LLM for health information with conversation manager introduction")
             
-            # Enhanced strategy handling for Phase 2.8
-            if strategy.get("action") == "log_symptom" and conversation_result.get("should_log_data"):
-                intent_type = "log_symptom"
-                intent_confidence = strategy.get("confidence", 0.8)
-                intent_data = extracted_data
-            elif strategy.get("action") == "log_symptom_partial":
-                intent_type = "log_symptom"
-                intent_confidence = strategy.get("confidence", 0.7)
-                intent_data = extracted_data
-            elif strategy.get("action") == "get_history":
-                intent_type = "get_symptom_history"
-                intent_confidence = strategy.get("confidence", 0.8)
-                intent_data = extracted_data
-            elif strategy.get("action") == "alert_emergency":
-                intent_type = "emergency"
-                intent_confidence = strategy.get("confidence", 0.95)
-                intent_data = extracted_data
-        elif intent_recognizer:
-            # Fall back to Phase 1 intent recognition
-            logger.info("🔍 CHAT: Using Phase 1 intent recognition")
-            intent_type, intent_confidence, intent_data = intent_recognizer.detect_intent(
-                request.query, 
-                conversation_history
+            # Perform similarity search for relevant documents
+            similar_docs = embedder.similarity_search(
+                query=request.query,
+                user_id=user_id,
+                top_k=request.top_k,
+                jwt=token
             )
-        
-        logger.info(f"🔍 INTENT: Detected '{intent_type}' with confidence {intent_confidence}")
-        
-        # Handle symptom logging intent (only if confidence is high enough)
-        if intent_type == "log_symptom" and intent_confidence > 0.6:
-            if intent_data.get("symptom_name"):
-                # We have enough data to log the symptom
-                try:
-                    logger.info(f"🔍 INTENT: Attempting to log symptom: {intent_data}")
-                    
-                    mock_request = MockRequest(
-                        headers={'Authorization': authorization},
-                        json_data={"symptom_data": intent_data}
-                    )
-                    
-                    save_result = await agent_actions.save_symptom(mock_request)
-                    
-                    if save_result.status_code == 200:
-                        result_data = json.loads(save_result.body.decode())
-                        agent_action_result = {
-                            "action": "symptom_logged",
-                            "success": True,
-                            "data": result_data
-                        }
-                        logger.info(f"✅ INTENT: Successfully logged symptom: {intent_data.get('symptom_name')}")
-                    else:
-                        agent_action_result = {
-                            "action": "symptom_logging_failed", 
-                            "success": False,
-                            "error": "Failed to save symptom"
-                        }
-                        logger.error(f"❌ INTENT: Failed to log symptom")
-                except Exception as e:
-                    logger.error(f"❌ INTENT: Error in symptom logging: {str(e)}")
-                    agent_action_result = {
-                        "action": "symptom_logging_failed",
-                        "success": False, 
-                        "error": str(e)
-                    }
-            else:
-                logger.info("🔍 INTENT: Symptom logging intent detected but insufficient data")
-                agent_action_result = {
-                    "action": "symptom_logging_incomplete",
-                    "success": False,
-                    "message": "I detected you want to log a symptom, but I need more details."
-                }
-        
-        # Handle symptom history intent
-        elif intent_type == "get_symptom_history" and intent_confidence > 0.5:
-            try:
-                logger.info(f"🔍 INTENT: Attempting to retrieve symptom history: {intent_data}")
-                
-                mock_request = MockRequest(
-                    headers={'Authorization': authorization},
-                    query_params=intent_data
-                )
-                
-                history_result = await agent_actions.get_symptoms(mock_request)
-                
-                if history_result.status_code == 200:
-                    result_data = json.loads(history_result.body.decode())
-                    agent_action_result = {
-                        "action": "symptom_history_retrieved",
-                        "success": True,
-                        "data": result_data
-                    }
-                    logger.info(f"✅ INTENT: Successfully retrieved symptom history")
-                else:
-                    agent_action_result = {
-                        "action": "symptom_history_failed",
-                        "success": False,
-                        "error": "Failed to retrieve symptom history"
-                    }
-            except Exception as e:
-                logger.error(f"❌ INTENT: Error retrieving symptom history: {str(e)}")
-                agent_action_result = {
-                    "action": "symptom_history_failed",
-                    "success": False,
-                    "error": str(e)
-                }
-        
-        auth_service.log_auth_event("chat_request", user_context=user_payload, success=True, details={
-            "query_length": len(request.query),
-            "top_k": request.top_k,
-            "temperature": request.temperature,
-            "has_user_profile": user_profile is not None,
-            "has_conversation_history": conversation_history is not None and len(conversation_history) > 0,
-            "intent_type": intent_type,
-            "intent_confidence": intent_confidence,
-            "agent_action_taken": agent_action_result is not None,
-            "phase2_conversation_management": conversation_result is not None,
-            "tracking_session_continued": request.tracking_session_id is not None
-        })
-        
-        # Perform similarity search - pass the JWT token string
-        logger.info(f"🔍 CHAT: Calling similarity_search with JWT token")
-        similar_docs = embedder.similarity_search(
-            query=request.query,
-            user_id=user_id,
-            top_k=request.top_k,
-            jwt=token  # Pass the JWT token string
-        )
-        
-        if not similar_docs:
-            base_response = "I couldn't find any relevant information to answer your question. Please make sure you have uploaded some documents first."
-            tokens_used = 0
-        else:
-            # Generate response using LLM if available - now with user context
-            if llm_handler:
-                response = await llm_handler.generate_response(
+            
+            if llm_handler and similar_docs:
+                # Generate LLM response
+                llm_response = await llm_handler.generate_response(
                     query=request.query,
                     context=similar_docs,
                     temperature=request.temperature,
                     user_profile=user_profile,
                     conversation_history=conversation_history
                 )
-                tokens_used = len(response.split())  # Rough token estimate
-                base_response = response
+                tokens_used = len(llm_response.split())
             else:
-                # Fallback response if LLM not available
-                base_response = f"Based on the documents I found, here's relevant information: {similar_docs[0]['content'][:200]}..."
-                tokens_used = len(base_response.split())
-        
-        # PHASE 2.8: Enhanced response generation with improved conversation context
-        if conversation_manager and conversation_result:
-            final_response = conversation_manager.enhance_response_with_context(
-                base_response, 
-                conversation_result, 
-                agent_action_result
-            )
-        else:
-            # Phase 1 response modification (improved)
-            final_response = base_response
+                llm_response = "I don't have specific information about that in your documents."
+                tokens_used = 0
             
-            # Only add confirmation messages if an action was actually taken
-            if agent_action_result and agent_action_result.get("success"):
-                if agent_action_result["action"] == "symptom_logged":
-                    symptom_name = agent_action_result["data"].get("symptom_name", "symptom")
-                    final_response = f"✅ I've logged your {symptom_name} in your symptom history.\n\n{base_response}"
-                elif agent_action_result["action"] == "symptom_history_retrieved":
-                    symptoms = agent_action_result["data"].get("symptoms", [])
-                    if symptoms:
-                        symptom_summary = f"📊 I found {len(symptoms)} symptom entries in your history. "
-                        # Add some basic analysis with improved timestamp formatting
-                        if len(symptoms) > 1:
-                            recent_symptom = symptoms[0]  # Most recent
-                            symptom_summary += f"Your most recent entry was '{recent_symptom.get('symptom_name')}' "
-                            if recent_symptom.get('created_at'):
-                                # Format timestamp more naturally
-                                try:
-                                    created_at = datetime.fromisoformat(recent_symptom['created_at'].replace('Z', '+00:00'))
-                                    formatted_date = created_at.strftime("%B %d at %I:%M %p")
-                                    symptom_summary += f"logged on {formatted_date}. "
-                                except:
-                                    symptom_summary += f"logged recently. "
-                        final_response = f"{symptom_summary}\n\n{base_response}"
-                    else:
-                        final_response = "📊 I didn't find any symptoms in your history yet. You can start logging symptoms by telling me about any symptoms you're experiencing.\n\n" + base_response
-            elif agent_action_result and not agent_action_result.get("success"):
-                if agent_action_result["action"] == "symptom_logging_incomplete":
-                    final_response = f"🤔 {agent_action_result.get('message', 'I need more details to log your symptom.')}\n\n{base_response}"
+            # Combine conversation manager introduction with LLM response
+            response_data = conversation_result.get("response_data", {})
+            intro_message = response_data.get("message", "")
+            
+            if intro_message:
+                final_response = f"{intro_message}\n\n{llm_response}"
+            else:
+                final_response = llm_response
+            
+            # Add follow-up question if present
+            follow_up_questions = response_data.get("follow_up_questions", [])
+            if follow_up_questions:
+                final_response += f"\n\n❓ {follow_up_questions[0]}"
+            
+            # Format sources for response
+            sources = [
+                {
+                    "content": doc["content"][:200] + "...",
+                    "metadata": doc["metadata"],
+                    "similarity": doc["similarity"],
+                    "filename": doc.get("filename", "Unknown"),
+                    "chunk_id": f"chunk_{i}",
+                    "page": doc.get("metadata", {}).get("page")
+                } 
+                for i, doc in enumerate(similar_docs)
+            ]
+            
+            return ChatResponse(
+                response=final_response,
+                sources=sources,
+                processing_time=int((time.time() - start_time) * 1000),
+                model="Symptom Savior",
+                tokens_used=tokens_used,
+                status="success",
+                conversation_analysis=conversation_result
+            )
+        
+        # Fallback to Phase 1 behavior for unknown strategies
+        else:
+            logger.info("🔍 CHAT: Falling back to Phase 1 behavior")
+            
+            # Perform similarity search
+            similar_docs = embedder.similarity_search(
+                query=request.query,
+                user_id=user_id,
+                top_k=request.top_k,
+                jwt=token
+            )
+            
+            if not similar_docs:
+                base_response = "I couldn't find any relevant information to answer your question. Please make sure you have uploaded some documents first."
+                tokens_used = 0
+            else:
+                # Generate response using LLM if available
+                if llm_handler:
+                    response = await llm_handler.generate_response(
+                        query=request.query,
+                        context=similar_docs,
+                        temperature=request.temperature,
+                        user_profile=user_profile,
+                        conversation_history=conversation_history
+                    )
+                    tokens_used = len(response.split())
+                    base_response = response
                 else:
-                    final_response = f"⚠️ I tried to help with your request but encountered an issue: {agent_action_result.get('error', 'Unknown error')}.\n\n{base_response}"
-        
-        # Format sources for response
-        sources = [
-            {
-                "content": doc["content"][:200] + "...",
-                "metadata": doc["metadata"],
-                "similarity": doc["similarity"],
-                "filename": doc.get("filename", "Unknown"),
-                "chunk_id": f"chunk_{i}",
-                "page": doc.get("metadata", {}).get("page")
-            } 
-            for i, doc in enumerate(similar_docs)
-        ]
-        
-        processing_time = int((time.time() - start_time) * 1000)
-        
-        request_logger.log_performance_metric("chat_response", time.time() - start_time, user_context=user_payload, metadata={
-            "sources_found": len(sources),
-            "response_length": len(final_response),
-            "tokens_used": tokens_used,
-            "used_user_profile": user_profile is not None,
-            "used_conversation_history": conversation_history is not None and len(conversation_history) > 0,
-            "intent_detected": intent_type,
-            "agent_action_taken": agent_action_result is not None,
-            "phase2_conversation_management": conversation_result is not None,
-            "tracking_session_continued": request.tracking_session_id is not None
-        })
-        
-        # Build response with agent action metadata
-        response_data = {
-            "response": final_response,
-            "sources": sources,
-            "processing_time": processing_time,
-            "model": "BioBERT",
-            "tokens_used": tokens_used,
-            "status": "success"
-        }
-        
-        # Add agent action metadata if present
-        if agent_action_result:
-            response_data["agent_action"] = agent_action_result
-            response_data["intent_detected"] = {
-                "type": intent_type,
-                "confidence": intent_confidence,
-                "data": intent_data
-            }
-        
-        # Add Phase 2 conversation analysis if available
-        if conversation_result:
-            response_data["conversation_analysis"] = {
-                "strategy": conversation_result.get("strategy"),
-                "flow_analysis": conversation_result.get("flow_analysis"),
-                "follow_up_needed": conversation_result.get("follow_up_needed"),
-                "phase": "2.8"
-            }
-        
-        return ChatResponse(**response_data)
+                    base_response = f"Based on the documents I found, here's relevant information: {similar_docs[0]['content'][:200]}..."
+                    tokens_used = len(base_response.split())
+            
+            # Format sources for response
+            sources = [
+                {
+                    "content": doc["content"][:200] + "...",
+                    "metadata": doc["metadata"],
+                    "similarity": doc["similarity"],
+                    "filename": doc.get("filename", "Unknown"),
+                    "chunk_id": f"chunk_{i}",
+                    "page": doc.get("metadata", {}).get("page")
+                } 
+                for i, doc in enumerate(similar_docs)
+            ]
+            
+            return ChatResponse(
+                response=base_response,
+                sources=sources,
+                processing_time=int((time.time() - start_time) * 1000),
+                model="Symptom Savior",
+                tokens_used=tokens_used,
+                status="success"
+            )
         
     except HTTPException as e:
         logger.error(f"❌ HTTP error in chat endpoint: {e.detail}")
@@ -1143,8 +962,7 @@ async def health_check(
             "/chat",
             "/agent-action/save-symptom",
             "/agent-action/get-symptoms",
-            "/agent-action/symptom-summary",
-            "/tracking/save-session"
+            "/agent-action/symptom-summary"
         ],
         "capabilities": {
             "document_processing": True,
@@ -1159,13 +977,15 @@ async def health_check(
             "symptom_tracking": True,
             "treatment_tracking": True,
             "appointment_tracking": True,
+            "conversational_loops": True,
             "phase1_features": True,
             "phase2_features": nlp_processor is not None and conversation_manager is not None,
             "phase2_8_enhanced_conversation": nlp_processor is not None and conversation_manager is not None,
             "advanced_nlp": nlp_processor is not None,
             "conversation_management": conversation_manager is not None,
             "improved_bedside_manner": True,
-            "comprehensive_health_tracking": True
+            "llm_suppression": True,
+            "tracking_session_management": True
         }
     }
     
@@ -1219,7 +1039,7 @@ async def health_check(
         "session_updated": health_data.get("session_updated", False),
         "phase2_features": health_data["capabilities"]["phase2_features"],
         "phase2_8_enhanced": health_data["capabilities"]["phase2_8_enhanced_conversation"],
-        "comprehensive_tracking": health_data["capabilities"]["comprehensive_health_tracking"]
+        "tracking_loops": health_data["capabilities"]["conversational_loops"]
     })
     
     return health_data
