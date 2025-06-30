@@ -511,11 +511,12 @@ async def chat(
         
         # Log user context information if provided
         user_profile = None
-        conversation_history = None
+        conversation_history = []  # Always initialize as empty list
         
         if request.context:
             user_profile = request.context.user_profile
-            conversation_history = request.context.conversation_history
+            # Ensure conversation_history is always a list
+            conversation_history = request.context.conversation_history or []
             
             if user_profile:
                 logger.info(f"🔍 CHAT: User profile provided with keys: {list(user_profile.keys())}")
@@ -597,11 +598,12 @@ async def chat(
         
         # PHASE 2.8: Enhanced Conversation Management with improved bedside manner
         conversation_result = None
-        if conversation_manager and conversation_history:
+        if conversation_manager:
             logger.info("🔍 CHAT: Using Phase 2.8 enhanced conversation management")
+            # Always pass conversation_history as a list (even if empty)
             conversation_result = conversation_manager.process_conversation_turn(
                 request.query, 
-                conversation_history, 
+                conversation_history,  # This is now guaranteed to be a list
                 user_profile,
                 user_id
             )
