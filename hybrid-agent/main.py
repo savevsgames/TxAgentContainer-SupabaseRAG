@@ -29,8 +29,10 @@ from agent_actions import agent_actions
 from nlp_processor import AdvancedNLPProcessor
 from conversation_manager import ConversationManager
 
-# Import new symptom tracking
+# Import tracking modules
 from symptom_tracker import symptom_tracker
+from treatment_tracker import treatment_tracker
+from appointment_tracker import appointment_tracker
 
 # Load environment variables
 load_dotenv()
@@ -49,15 +51,15 @@ request_logger.log_system_event("startup", {
     "port": os.getenv("PORT", "8000"),
     "log_level": os.getenv("LOG_LEVEL", "INFO"),
     "agent_awareness": True,
-    "phase": "2.9",
-    "symptom_tracking_loop": True
+    "phase": "2.8",
+    "tracking_modules": ["symptoms", "treatments", "appointments"]
 })
 
 # Initialize FastAPI app
 app = FastAPI(
     title="TxAgent Hybrid Container",
-    description="Medical RAG Vector Uploader with BioBERT embeddings, chat capabilities, and conversational symptom tracking loop",
-    version="1.2.9"
+    description="Medical RAG Vector Uploader with BioBERT embeddings, chat capabilities, and comprehensive health tracking",
+    version="1.3.0"
 )
 
 # Add CORS middleware with extensive logging
@@ -139,8 +141,7 @@ class ChatRequest(BaseModel):
     top_k: int = Field(5, description="Number of similar documents to retrieve")
     temperature: float = Field(0.7, description="Temperature for response generation")
     stream: bool = Field(False, description="Whether to stream the response")
-    # New field for tracking session continuation
-    tracking_session_id: Optional[str] = Field(None, description="ID of active symptom tracking session")
+    tracking_session_id: Optional[str] = Field(None, description="ID of active tracking session to continue")
 
 class ChatResponse(BaseModel):
     response: str = Field(..., description="Generated response to the query")
@@ -152,9 +153,7 @@ class ChatResponse(BaseModel):
     agent_action: Optional[Dict[str, Any]] = Field(None, description="Agent action taken if any")
     intent_detected: Optional[Dict[str, Any]] = Field(None, description="Intent detection results")
     conversation_analysis: Optional[Dict[str, Any]] = Field(None, description="Phase 2 conversation analysis")
-    # New fields for symptom tracking
-    tracking_session_id: Optional[str] = Field(None, description="Active symptom tracking session ID")
-    tracking_status: Optional[str] = Field(None, description="Status of symptom tracking session")
+    tracking_session: Optional[Dict[str, Any]] = Field(None, description="Active tracking session information")
 
 class AgentSessionRequest(BaseModel):
     session_data: Dict[str, Any] = {}
@@ -171,7 +170,7 @@ class HealthResponse(BaseModel):
     status: str = "healthy"
     model: str = os.getenv("MODEL_NAME", "dmis-lab/biobert-v1.1")
     device: str = os.getenv("DEVICE", "cuda")
-    version: str = "1.2.9"
+    version: str = "1.3.0"
     uptime: Optional[int] = None
     memory_usage: Optional[str] = None
 
@@ -339,12 +338,10 @@ async def get_symptom_summary_endpoint(request: Request):
     logger.info("🚀 AGENT_ACTION: Get symptom summary endpoint called")
     return await agent_actions.get_symptom_summary(request)
 
-# New endpoint for symptom tracking confirmation
-@app.post("/agent-action/confirm-symptom")
-async def confirm_symptom_endpoint(request: Request):
-    """Confirm and save a symptom from tracking session."""
-    logger.info("🚀 AGENT_ACTION: Confirm symptom endpoint called")
-    
+# New tracking session endpoints
+@app.post("/tracking/save-session")
+async def save_tracking_session(request: Request):
+    """Save a completed tracking session to the database."""
     try:
         # Get authorization header
         authorization = request.headers.get("Authorization")
@@ -361,19 +358,30 @@ async def confirm_symptom_endpoint(request: Request):
         # Parse request body
         data = await request.json()
         session_id = data.get("session_id")
+        tracking_type = data.get("tracking_type")
         
-        if not session_id:
+        if not session_id or not tracking_type:
             return JSONResponse(
                 status_code=400,
-                content={"detail": "session_id is required"}
+                content={"detail": "session_id and tracking_type are required"}
             )
         
-        # Save the symptom from tracking session
-        result = await symptom_tracker.save_to_database(session_id, token)
+        # Save using appropriate tracker
+        if tracking_type == "symptom":
+            result = await symptom_tracker.save_to_database(session_id, token)
+        elif tracking_type == "treatment":
+            result = await treatment_tracker.save_to_database(session_id, token)
+        elif tracking_type == "appointment":
+            result = await appointment_tracker.save_to_database(session_id, token)
+        else:
+            return JSONResponse(
+                status_code=400,
+                content={"detail": f"Unknown tracking type: {tracking_type}"}
+            )
         
         if result.get("error"):
             return JSONResponse(
-                status_code=400,
+                status_code=500,
                 content={"detail": result["error"]}
             )
         
@@ -383,10 +391,10 @@ async def confirm_symptom_endpoint(request: Request):
         )
         
     except Exception as e:
-        logger.error(f"❌ CONFIRM_SYMPTOM: Error: {str(e)}")
+        logger.error(f"❌ Error saving tracking session: {str(e)}")
         return JSONResponse(
             status_code=500,
-            content={"detail": f"Failed to confirm symptom: {str(e)}"}
+            content={"detail": f"Failed to save tracking session: {str(e)}"}
         )
 
 @app.post("/embed", response_model=EmbedResponse)
@@ -556,7 +564,7 @@ async def chat(
     
     This endpoint performs similarity search to find relevant documents,
     then generates a response using an LLM based on the query and context.
-    Now enhanced with conversational symptom tracking loop.
+    Now enhanced with comprehensive health tracking capabilities.
     """
     logger.info(f"🚀 CHAT REQUEST: {request.query[:50]}...")
     
@@ -584,72 +592,64 @@ async def chat(
         
         start_time = time.time()
         
-        # Check if this is continuing a symptom tracking session
+        # Check if this is continuing a tracking session
         if request.tracking_session_id:
-            logger.info(f"🔍 CHAT: Continuing symptom tracking session: {request.tracking_session_id}")
+            logger.info(f"🔍 CHAT: Continuing tracking session {request.tracking_session_id}")
             
-            # Continue the tracking session
-            tracking_result = conversation_manager.continue_symptom_tracking(
-                request.tracking_session_id,
-                request.query,
-                user_id
-            )
-            
-            # Handle confirmation for saving
-            if tracking_result.get("status") == "awaiting_confirmation":
-                if request.query.lower().strip() in ["yes", "y", "correct", "save it", "looks good"]:
-                    # User confirmed, save to database
-                    save_result = await symptom_tracker.save_to_database(request.tracking_session_id, token)
-                    
-                    if save_result.get("success"):
-                        final_response = save_result["message"]
-                        tracking_status = "completed"
+            if conversation_manager:
+                tracking_result = conversation_manager.continue_tracking_session(
+                    request.tracking_session_id,
+                    request.query,
+                    user_id
+                )
+                
+                # Handle session completion
+                if tracking_result.get("status") == "awaiting_confirmation":
+                    # Check if user confirmed
+                    if request.query.lower().strip() in ["yes", "y", "correct", "save it", "looks good"]:
+                        # Save to database
+                        tracking_type = tracking_result.get("tracking_type", "symptom")
+                        
+                        if tracking_type == "symptom":
+                            save_result = await symptom_tracker.save_to_database(request.tracking_session_id, token)
+                        elif tracking_type == "treatment":
+                            save_result = await treatment_tracker.save_to_database(request.tracking_session_id, token)
+                        elif tracking_type == "appointment":
+                            save_result = await appointment_tracker.save_to_database(request.tracking_session_id, token)
+                        else:
+                            save_result = {"error": "Unknown tracking type"}
+                        
+                        if save_result.get("success"):
+                            final_response = f"✅ {save_result['message']}"
+                            tracking_session = None  # Session is complete
+                        else:
+                            final_response = f"❌ Sorry, there was an error saving your {tracking_type}: {save_result.get('error', 'Unknown error')}"
+                            tracking_session = tracking_result
                     else:
-                        final_response = f"I had trouble saving your symptom: {save_result.get('error', 'Unknown error')}"
-                        tracking_status = "error"
-                    
-                    return ChatResponse(
-                        response=final_response,
-                        sources=[],
-                        processing_time=int((time.time() - start_time) * 1000),
-                        model="BioBERT",
-                        tokens_used=0,
-                        status="success",
-                        tracking_session_id=request.tracking_session_id,
-                        tracking_status=tracking_status
-                    )
-                elif request.query.lower().strip() in ["no", "n", "incorrect", "wrong", "change"]:
-                    # User wants to make changes
-                    final_response = "What would you like to change about your symptom entry?"
-                    tracking_status = "editing"
-                    
-                    return ChatResponse(
-                        response=final_response,
-                        sources=[],
-                        processing_time=int((time.time() - start_time) * 1000),
-                        model="BioBERT",
-                        tokens_used=0,
-                        status="success",
-                        tracking_session_id=request.tracking_session_id,
-                        tracking_status=tracking_status
-                    )
-            
-            # Return the tracking result
-            return ChatResponse(
-                response=tracking_result["message"],
-                sources=[],
-                processing_time=int((time.time() - start_time) * 1000),
-                model="BioBERT",
-                tokens_used=0,
-                status="success",
-                tracking_session_id=request.tracking_session_id,
-                tracking_status=tracking_result.get("status", "in_progress")
-            )
+                        # User wants to make changes or said no
+                        final_response = f"No problem! What would you like to change about your {tracking_result.get('tracking_type', 'entry')}?"
+                        tracking_session = tracking_result
+                else:
+                    # Continue with tracking session
+                    final_response = tracking_result["message"]
+                    tracking_session = tracking_result
+                
+                processing_time = int((time.time() - start_time) * 1000)
+                
+                return ChatResponse(
+                    response=final_response,
+                    sources=[],
+                    processing_time=processing_time,
+                    model="BioBERT",
+                    tokens_used=len(final_response.split()),
+                    status="success",
+                    tracking_session=tracking_session
+                )
         
-        # PHASE 2.9: Enhanced Conversation Management with symptom tracking loop
+        # PHASE 2.8: Enhanced Conversation Management with improved bedside manner
         conversation_result = None
         if conversation_manager and conversation_history:
-            logger.info("🔍 CHAT: Using Phase 2.9 enhanced conversation management with symptom tracking")
+            logger.info("🔍 CHAT: Using Phase 2.8 enhanced conversation management")
             conversation_result = conversation_manager.process_conversation_turn(
                 request.query, 
                 conversation_history, 
@@ -657,6 +657,29 @@ async def chat(
                 user_id
             )
             logger.info(f"🔍 CHAT: Conversation strategy: {conversation_result.get('strategy', {}).get('type', 'unknown')}")
+        
+        # Handle tracking loops
+        if conversation_result and conversation_result.get("strategy", {}).get("type").endswith("_tracking_loop"):
+            response_data = conversation_result.get("response_data", {})
+            final_response = response_data.get("message", "I'd like to help you track that information.")
+            
+            processing_time = int((time.time() - start_time) * 1000)
+            
+            return ChatResponse(
+                response=final_response,
+                sources=[],
+                processing_time=processing_time,
+                model="BioBERT",
+                tokens_used=len(final_response.split()),
+                status="success",
+                conversation_analysis=conversation_result,
+                tracking_session={
+                    "session_id": response_data.get("tracking_session_id"),
+                    "tracking_type": response_data.get("tracking_type"),
+                    "progress": response_data.get("progress"),
+                    "status": "active"
+                }
+            )
         
         # PHASE 1: Intent Recognition (fallback or parallel processing)
         intent_type = "general_chat"
@@ -667,45 +690,25 @@ async def chat(
         # Use Phase 2 data if available, otherwise fall back to Phase 1
         if conversation_result:
             strategy = conversation_result.get("strategy", {})
-            symptom_data = conversation_result.get("symptom_data", {})
-            
-            # Handle new symptom tracking loop
-            if strategy.get("type") == "symptom_tracking_loop":
-                response_data = conversation_result.get("response_data", {})
-                
-                return ChatResponse(
-                    response=response_data.get("message", "Let's track your symptom."),
-                    sources=[],
-                    processing_time=int((time.time() - start_time) * 1000),
-                    model="BioBERT",
-                    tokens_used=0,
-                    status="success",
-                    tracking_session_id=response_data.get("tracking_session_id"),
-                    tracking_status="in_progress",
-                    conversation_analysis={
-                        "strategy": strategy,
-                        "phase": "2.9",
-                        "tracking_loop": True
-                    }
-                )
+            extracted_data = conversation_result.get("extracted_data", {})
             
             # Enhanced strategy handling for Phase 2.8
-            if strategy.get("action") == "log_symptom" and conversation_result.get("should_log_symptom"):
+            if strategy.get("action") == "log_symptom" and conversation_result.get("should_log_data"):
                 intent_type = "log_symptom"
                 intent_confidence = strategy.get("confidence", 0.8)
-                intent_data = symptom_data
+                intent_data = extracted_data
             elif strategy.get("action") == "log_symptom_partial":
                 intent_type = "log_symptom"
                 intent_confidence = strategy.get("confidence", 0.7)
-                intent_data = symptom_data
-            elif strategy.get("action") == "get_symptom_history":
+                intent_data = extracted_data
+            elif strategy.get("action") == "get_history":
                 intent_type = "get_symptom_history"
                 intent_confidence = strategy.get("confidence", 0.8)
-                intent_data = symptom_data
+                intent_data = extracted_data
             elif strategy.get("action") == "alert_emergency":
                 intent_type = "emergency"
                 intent_confidence = strategy.get("confidence", 0.95)
-                intent_data = symptom_data
+                intent_data = extracted_data
         elif intent_recognizer:
             # Fall back to Phase 1 intent recognition
             logger.info("🔍 CHAT: Using Phase 1 intent recognition")
@@ -804,71 +807,39 @@ async def chat(
             "intent_confidence": intent_confidence,
             "agent_action_taken": agent_action_result is not None,
             "phase2_conversation_management": conversation_result is not None,
-            "tracking_session_id": request.tracking_session_id
+            "tracking_session_continued": request.tracking_session_id is not None
         })
         
-        # IMPROVED CONVERSATIONAL FLOW: Determine if we should call LLM based on conversation strategy
-        should_call_llm = True
-        similar_docs = []
-        base_response = ""
-        tokens_used = 0
+        # Perform similarity search - pass the JWT token string
+        logger.info(f"🔍 CHAT: Calling similarity_search with JWT token")
+        similar_docs = embedder.similarity_search(
+            query=request.query,
+            user_id=user_id,
+            top_k=request.top_k,
+            jwt=token  # Pass the JWT token string
+        )
         
-        if conversation_result:
-            strategy_type = conversation_result.get("strategy", {}).get("type")
-            
-            # For these conversation strategies, suppress LLM and let conversation_manager handle the response
-            conversational_strategies = [
-                "symptom_logging", 
-                "partial_logging_with_follow_up", 
-                "emergency_response", 
-                "symptom_history", 
-                "general_conversation",
-                "greeting",
-                "health_information"
-            ]
-            
-            if strategy_type in conversational_strategies:
-                logger.info(f"🔍 CHAT: Suppressing LLM for conversational strategy: {strategy_type}")
-                should_call_llm = False
-                similar_docs = []
-                base_response = ""
-                tokens_used = 0
-        
-        # Only perform similarity search and LLM generation for non-conversational strategies
-        if should_call_llm:
-            logger.info(f"🔍 CHAT: Calling similarity_search and LLM for strategy")
-            
-            # Perform similarity search - pass the JWT token string
-            similar_docs = embedder.similarity_search(
-                query=request.query,
-                user_id=user_id,
-                top_k=request.top_k,
-                jwt=token  # Pass the JWT token string
-            )
-            
-            if not similar_docs:
-                base_response = "I couldn't find any relevant information to answer your question. Please make sure you have uploaded some documents first."
-                tokens_used = 0
-            else:
-                # Generate response using LLM if available - now with user context
-                if llm_handler:
-                    response = await llm_handler.generate_response(
-                        query=request.query,
-                        context=similar_docs,
-                        temperature=request.temperature,
-                        user_profile=user_profile,
-                        conversation_history=conversation_history
-                    )
-                    tokens_used = len(response.split())  # Rough token estimate
-                    base_response = response
-                else:
-                    # Fallback response if LLM not available
-                    base_response = f"Based on the documents I found, here's relevant information: {similar_docs[0]['content'][:200]}..."
-                    tokens_used = len(base_response.split())
+        if not similar_docs:
+            base_response = "I couldn't find any relevant information to answer your question. Please make sure you have uploaded some documents first."
+            tokens_used = 0
         else:
-            logger.info(f"🔍 CHAT: Skipping similarity search and LLM for conversational strategy")
+            # Generate response using LLM if available - now with user context
+            if llm_handler:
+                response = await llm_handler.generate_response(
+                    query=request.query,
+                    context=similar_docs,
+                    temperature=request.temperature,
+                    user_profile=user_profile,
+                    conversation_history=conversation_history
+                )
+                tokens_used = len(response.split())  # Rough token estimate
+                base_response = response
+            else:
+                # Fallback response if LLM not available
+                base_response = f"Based on the documents I found, here's relevant information: {similar_docs[0]['content'][:200]}..."
+                tokens_used = len(base_response.split())
         
-        # PHASE 2.9: Enhanced response generation with improved conversation context
+        # PHASE 2.8: Enhanced response generation with improved conversation context
         if conversation_manager and conversation_result:
             final_response = conversation_manager.enhance_response_with_context(
                 base_response, 
@@ -933,8 +904,7 @@ async def chat(
             "intent_detected": intent_type,
             "agent_action_taken": agent_action_result is not None,
             "phase2_conversation_management": conversation_result is not None,
-            "llm_called": should_call_llm,
-            "tracking_session_id": request.tracking_session_id
+            "tracking_session_continued": request.tracking_session_id is not None
         })
         
         # Build response with agent action metadata
@@ -962,7 +932,7 @@ async def chat(
                 "strategy": conversation_result.get("strategy"),
                 "flow_analysis": conversation_result.get("flow_analysis"),
                 "follow_up_needed": conversation_result.get("follow_up_needed"),
-                "phase": "2.9"
+                "phase": "2.8"
             }
         
         return ChatResponse(**response_data)
@@ -1162,7 +1132,7 @@ async def health_check(
         "status": "healthy",
         "model": os.getenv("MODEL_NAME", "dmis-lab/biobert-v1.1"),
         "device": os.getenv("DEVICE", "cuda"),
-        "version": "1.2.9",
+        "version": "1.3.0",
         "uptime": uptime_seconds,
         "memory_usage": memory_usage,
         "endpoints": [
@@ -1174,7 +1144,7 @@ async def health_check(
             "/agent-action/save-symptom",
             "/agent-action/get-symptoms",
             "/agent-action/symptom-summary",
-            "/agent-action/confirm-symptom"
+            "/tracking/save-session"
         ],
         "capabilities": {
             "document_processing": True,
@@ -1187,14 +1157,15 @@ async def health_check(
             "agent_awareness": True,
             "intent_recognition": intent_recognizer is not None,
             "symptom_tracking": True,
+            "treatment_tracking": True,
+            "appointment_tracking": True,
             "phase1_features": True,
             "phase2_features": nlp_processor is not None and conversation_manager is not None,
-            "phase2_8_enhanced_conversation":  nlp_processor is not None and conversation_manager is not None,
-            "phase2_9_symptom_tracking_loop": True,
+            "phase2_8_enhanced_conversation": nlp_processor is not None and conversation_manager is not None,
             "advanced_nlp": nlp_processor is not None,
             "conversation_management": conversation_manager is not None,
             "improved_bedside_manner": True,
-            "conversational_symptom_tracking": True
+            "comprehensive_health_tracking": True
         }
     }
     
@@ -1248,7 +1219,7 @@ async def health_check(
         "session_updated": health_data.get("session_updated", False),
         "phase2_features": health_data["capabilities"]["phase2_features"],
         "phase2_8_enhanced": health_data["capabilities"]["phase2_8_enhanced_conversation"],
-        "phase2_9_symptom_tracking": health_data["capabilities"]["phase2_9_symptom_tracking_loop"]
+        "comprehensive_tracking": health_data["capabilities"]["comprehensive_health_tracking"]
     })
     
     return health_data
