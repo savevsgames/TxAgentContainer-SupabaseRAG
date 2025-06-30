@@ -199,13 +199,19 @@ class ConversationEngine:
         
         # Check for negative confirmation or changes
         elif any(word in message_lower for word in ["no", "n", "wrong", "change", "incorrect"]):
-            return {
-                "message": "What would you like to change? You can tell me the new information and I'll update it.",
-                "question": None,
-                "session_id": f"{session.current_collector}_{session.user_id}_{int(session.created_at.timestamp())}",
-                "progress": session.completion_progress,
-                "complete": False
-            }
+            # Reset to data collection state to handle corrections
+            if session.current_collector == "symptom":
+                session.update_state(ConversationState.COLLECTING_SYMPTOM)
+            elif session.current_collector == "treatment":
+                session.update_state(ConversationState.COLLECTING_TREATMENT)
+            elif session.current_collector == "appointment":
+                session.update_state(ConversationState.COLLECTING_APPOINTMENT)
+            
+            # Clear questions asked to allow re-collection
+            session.questions_asked = []
+            
+            # Process the correction message through data collection
+            return await self._handle_data_collection(session, message)
         
         else:
             # Unclear response, ask again

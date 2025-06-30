@@ -70,12 +70,16 @@ class SymptomCollector:
     def process_response(self, response: str, current_data: Dict[str, Any], questions_asked: List[str]) -> Dict[str, Any]:
         """Process user response and update data."""
         logger.info(f"🔄 SYMPTOM_COLLECTOR: Processing response: {response}")
+        logger.info(f"🔄 SYMPTOM_COLLECTOR: Current data: {current_data}")
+        logger.info(f"🔄 SYMPTOM_COLLECTOR: Questions asked: {questions_asked}")
         
-        # Extract new data from response
+        # Extract new data from response - now extracts ALL possible fields
         new_data = self._extract_from_response(response, current_data, questions_asked)
         
         # Update data
         updated_data = {**current_data, **new_data}
+        
+        logger.info(f"🔄 SYMPTOM_COLLECTOR: Updated data: {updated_data}")
         
         # Check if complete
         if self._is_complete(updated_data):
@@ -105,11 +109,19 @@ class SymptomCollector:
             "headache", "migraine", "pain", "ache", "hurt", "sore", "fever",
             "nausea", "dizziness", "fatigue", "toothache", "earache", "backache",
             "sore throat", "runny nose", "cough", "stomach ache", "chest pain",
-            "back pain", "joint pain", "muscle pain", "neck pain"
+            "back pain", "joint pain", "muscle pain", "neck pain", "knee pain",
+            "sore knee", "sore back", "sore neck", "sore shoulder"
         ]
         
         for symptom in symptom_keywords:
-            if symptom in query_lower:
+            if ' ' in symptom:
+                # Multi-word phrase
+                pattern = re.escape(symptom)
+            else:
+                # Single word with boundaries
+                pattern = r'\b' + re.escape(symptom) + r'\b'
+            
+            if re.search(pattern, query_lower):
                 data["symptom_name"] = symptom
                 break
         
@@ -117,7 +129,8 @@ class SymptomCollector:
         severity_patterns = [
             r"(\d+)\s*(?:out of|/)\s*(\d+)",
             r"severity\s*(?:of\s*)?(\d+)",
-            r"(\d+)\s*(?:scale|/10)"
+            r"(\d+)\s*(?:scale|/10)",
+            r"\b(\d+)\b"  # Any single digit number
         ]
         
         for pattern in severity_patterns:
@@ -128,7 +141,9 @@ class SymptomCollector:
                     max_value = int(match.group(2))
                     data["severity"] = min(10, max(1, int((value / max_value) * 10)))
                 else:
-                    data["severity"] = min(10, max(1, int(match.group(1))))
+                    severity_value = int(match.group(1))
+                    if 1 <= severity_value <= 10:
+                        data["severity"] = severity_value
                 break
         
         # Extract duration
@@ -151,7 +166,8 @@ class SymptomCollector:
         ]
         
         for part in body_parts:
-            if part in query_lower:
+            pattern = r'\b' + re.escape(part) + r'\b'
+            if re.search(pattern, query_lower):
                 data["location"] = part
                 break
         
@@ -159,52 +175,93 @@ class SymptomCollector:
         return data
 
     def _extract_from_response(self, response: str, current_data: Dict[str, Any], questions_asked: List[str]) -> Dict[str, Any]:
-        """Extract data from user response to specific question."""
+        """Extract data from user response - now extracts ALL possible fields."""
         new_data = {}
         response_lower = response.lower().strip()
         
-        # Determine what we're likely asking about based on what's missing
-        missing_fields = [field for field in self.required_fields + self.optional_fields 
-                         if field not in current_data]
+        logger.info(f"🔍 EXTRACT_RESPONSE: Analyzing response: '{response}'")
         
-        # If we're missing severity and response looks like a number
-        if "severity" in missing_fields:
-            severity_match = re.search(r"\b([1-9]|10)\b", response_lower)
-            if severity_match:
-                new_data["severity"] = int(severity_match.group(1))
+        # ALWAYS try to extract severity if we see a number
+        severity_patterns = [
+            r"(\d+)\s*(?:out of|/)\s*(\d+)",  # "6 out of 10" or "6/10"
+            r"severity\s*(?:of\s*)?(\d+)",     # "severity 6" or "severity of 6"
+            r"(\d+)\s*(?:scale|/10)",          # "6 scale" or "6/10"
+            r"\b(\d+)\b"                       # Any single digit number
+        ]
         
-        # If we're missing duration
-        if "duration_hours" in missing_fields:
-            for pattern, converter in self.duration_patterns.items():
-                match = re.search(pattern, response_lower)
-                if match:
-                    try:
-                        if match.groups():
-                            new_data["duration_hours"] = converter(match.group(1))
-                        else:
-                            new_data["duration_hours"] = converter(None)
+        for pattern in severity_patterns:
+            match = re.search(pattern, response_lower)
+            if match:
+                if len(match.groups()) == 2:
+                    # Scale format like "6/10"
+                    value = int(match.group(1))
+                    max_value = int(match.group(2))
+                    severity = min(10, max(1, int((value / max_value) * 10)))
+                else:
+                    # Single number
+                    severity = int(match.group(1))
+                    if 1 <= severity <= 10:
+                        new_data["severity"] = severity
+                        logger.info(f"🔍 EXTRACT_RESPONSE: Found severity: {severity}")
                         break
-                    except:
-                        continue
         
-        # If we're missing location and response mentions body parts
-        if "location" in missing_fields:
-            body_parts = [
-                "head", "forehead", "neck", "throat", "chest", "back", "stomach",
-                "arm", "leg", "knee", "shoulder", "tooth", "teeth", "ear", "eye"
-            ]
-            for part in body_parts:
-                if part in response_lower:
-                    new_data["location"] = part
+        # ALWAYS try to extract duration
+        for pattern, converter in self.duration_patterns.items():
+            match = re.search(pattern, response_lower)
+            if match:
+                try:
+                    if match.groups():
+                        duration = converter(match.group(1))
+                        new_data["duration_hours"] = duration
+                        logger.info(f"🔍 EXTRACT_RESPONSE: Found duration: {duration} hours")
+                    else:
+                        duration = converter(None)
+                        new_data["duration_hours"] = duration
+                        logger.info(f"🔍 EXTRACT_RESPONSE: Found duration: {duration} hours")
                     break
+                except:
+                    continue
         
-        # If we're missing symptom name
-        if "symptom_name" in missing_fields:
-            # Use the response as symptom name if it's reasonable
-            if len(response.strip()) > 2 and len(response.strip()) < 30:
+        # ALWAYS try to extract location
+        body_parts = [
+            "head", "forehead", "neck", "throat", "chest", "back", "stomach",
+            "arm", "leg", "knee", "shoulder", "tooth", "teeth", "ear", "eye"
+        ]
+        
+        for part in body_parts:
+            pattern = r'\b' + re.escape(part) + r'\b'
+            if re.search(pattern, response_lower):
+                new_data["location"] = part
+                logger.info(f"🔍 EXTRACT_RESPONSE: Found location: {part}")
+                break
+        
+        # ALWAYS try to extract symptom name if missing
+        if "symptom_name" not in current_data:
+            symptom_keywords = [
+                "headache", "migraine", "pain", "ache", "hurt", "sore", "fever",
+                "nausea", "dizziness", "fatigue", "toothache", "earache", "backache",
+                "sore throat", "runny nose", "cough", "stomach ache", "chest pain",
+                "back pain", "joint pain", "muscle pain", "neck pain", "knee pain",
+                "sore knee", "sore back", "sore neck", "sore shoulder"
+            ]
+            
+            for symptom in symptom_keywords:
+                if ' ' in symptom:
+                    pattern = re.escape(symptom)
+                else:
+                    pattern = r'\b' + re.escape(symptom) + r'\b'
+                
+                if re.search(pattern, response_lower):
+                    new_data["symptom_name"] = symptom
+                    logger.info(f"🔍 EXTRACT_RESPONSE: Found symptom: {symptom}")
+                    break
+            
+            # If no specific symptom found, use the response as symptom name if reasonable
+            if "symptom_name" not in new_data and len(response.strip()) > 2 and len(response.strip()) < 30:
                 new_data["symptom_name"] = response.strip().lower()
+                logger.info(f"🔍 EXTRACT_RESPONSE: Using response as symptom: {response.strip().lower()}")
         
-        logger.info(f"🔍 EXTRACT_RESPONSE: From '{response}': {new_data}")
+        logger.info(f"🔍 EXTRACT_RESPONSE: Final extracted data: {new_data}")
         return new_data
 
     def _get_next_question(self, data: Dict[str, Any], questions_asked: List[str]) -> Optional[str]:

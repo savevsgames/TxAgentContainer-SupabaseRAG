@@ -59,12 +59,15 @@ class AppointmentCollector:
     def process_response(self, response: str, current_data: Dict[str, Any], questions_asked: List[str]) -> Dict[str, Any]:
         """Process user response and update data."""
         logger.info(f"🔄 APPOINTMENT_COLLECTOR: Processing response: {response}")
+        logger.info(f"🔄 APPOINTMENT_COLLECTOR: Current data: {current_data}")
         
-        # Extract new data from response
+        # Extract new data from response - now extracts ALL possible fields
         new_data = self._extract_from_response(response, current_data, questions_asked)
         
         # Update data
         updated_data = {**current_data, **new_data}
+        
+        logger.info(f"🔄 APPOINTMENT_COLLECTOR: Updated data: {updated_data}")
         
         # Check if complete
         if self._is_complete(updated_data):
@@ -111,7 +114,8 @@ class AppointmentCollector:
         ]
         
         for time_ref in time_references:
-            if time_ref in query_lower:
+            pattern = r'\b' + re.escape(time_ref) + r'\b'
+            if re.search(pattern, query_lower):
                 data["appointment_time_text"] = time_ref
                 break
         
@@ -122,14 +126,16 @@ class AppointmentCollector:
         ]
         
         for apt_type in appointment_types:
-            if apt_type in query_lower:
+            pattern = r'\b' + re.escape(apt_type) + r'\b'
+            if re.search(pattern, query_lower):
                 data["visit_summary"] = f"{apt_type.title()} appointment"
                 break
         
         # Extract location indicators
         location_indicators = ["at", "clinic", "hospital", "medical center"]
         for indicator in location_indicators:
-            if indicator in query_lower:
+            pattern = r'\b' + re.escape(indicator) + r'\b'
+            if re.search(pattern, query_lower):
                 # Try to extract location name
                 words = query.split()
                 for i, word in enumerate(words):
@@ -143,51 +149,75 @@ class AppointmentCollector:
         return data
 
     def _extract_from_response(self, response: str, current_data: Dict[str, Any], questions_asked: List[str]) -> Dict[str, Any]:
-        """Extract data from user response to specific question."""
+        """Extract data from user response - now extracts ALL possible fields."""
         new_data = {}
         response_lower = response.lower().strip()
         
-        # Determine what we're likely asking about
-        missing_fields = [field for field in self.required_fields + self.optional_fields 
-                         if field not in current_data]
+        logger.info(f"🔍 EXTRACT_RESPONSE: Analyzing response: '{response}'")
         
-        # If we're missing doctor_name
-        if "doctor_name" in missing_fields:
-            doctor_patterns = [
-                r"dr\.?\s+([a-z]+)",
-                r"doctor\s+([a-z]+)",
-                r"^([a-z]+)$"  # Single name response
+        # ALWAYS try to extract doctor name
+        doctor_patterns = [
+            r"dr\.?\s+([a-z]+)",
+            r"doctor\s+([a-z]+)",
+            r"^([a-z]+)$"  # Single name response
+        ]
+        
+        for pattern in doctor_patterns:
+            match = re.search(pattern, response_lower)
+            if match:
+                name = match.group(1).title()
+                if len(name) > 2:
+                    new_data["doctor_name"] = f"Dr. {name}" if not response.startswith("Dr") else name.title()
+                    logger.info(f"🔍 EXTRACT_RESPONSE: Found doctor: {new_data['doctor_name']}")
+                    break
+        
+        # ALWAYS try to extract visit time
+        parsed_dt = self._parse_datetime(response)
+        if parsed_dt:
+            new_data["visit_ts"] = parsed_dt.isoformat()
+            logger.info(f"🔍 EXTRACT_RESPONSE: Found visit time: {parsed_dt}")
+        else:
+            # Store text for later parsing
+            time_references = [
+                "tomorrow", "today", "next week", "monday", "tuesday", "wednesday",
+                "thursday", "friday", "saturday", "sunday"
             ]
             
-            for pattern in doctor_patterns:
-                match = re.search(pattern, response_lower)
-                if match:
-                    name = match.group(1).title()
-                    if len(name) > 2:
-                        new_data["doctor_name"] = f"Dr. {name}" if not response.startswith("Dr") else name.title()
-                        break
+            for time_ref in time_references:
+                pattern = r'\b' + re.escape(time_ref) + r'\b'
+                if re.search(pattern, response_lower):
+                    new_data["appointment_time_text"] = response.strip()
+                    logger.info(f"🔍 EXTRACT_RESPONSE: Found time reference: {response.strip()}")
+                    break
         
-        # If we're missing visit_ts
-        if "visit_ts" in missing_fields:
-            # Parse datetime
-            parsed_dt = self._parse_datetime(response)
-            if parsed_dt:
-                new_data["visit_ts"] = parsed_dt.isoformat()
-            else:
-                # Store text for later parsing
-                new_data["appointment_time_text"] = response.strip()
-        
-        # If we're missing location
-        if "location" in missing_fields:
-            if len(response.strip()) > 2:
+        # ALWAYS try to extract location
+        if len(response.strip()) > 2 and "location" not in current_data:
+            # Check if this looks like a location
+            location_indicators = ["clinic", "hospital", "medical", "center", "office", "building"]
+            if any(word in response_lower for word in location_indicators) or len(response.strip()) < 50:
                 new_data["location"] = response.strip()
+                logger.info(f"🔍 EXTRACT_RESPONSE: Found location: {response.strip()}")
         
-        # If we're missing visit_summary
-        if "visit_summary" in missing_fields:
-            if len(response.strip()) > 2:
+        # ALWAYS try to extract visit summary
+        if len(response.strip()) > 2 and "visit_summary" not in current_data:
+            appointment_types = [
+                "checkup", "follow-up", "consultation", "exam", "physical",
+                "surgery", "procedure", "screening"
+            ]
+            
+            for apt_type in appointment_types:
+                pattern = r'\b' + re.escape(apt_type) + r'\b'
+                if re.search(pattern, response_lower):
+                    new_data["visit_summary"] = response.strip()
+                    logger.info(f"🔍 EXTRACT_RESPONSE: Found visit summary: {response.strip()}")
+                    break
+            
+            # If no specific type found, use response if it looks like a purpose
+            if "visit_summary" not in new_data and len(response.strip()) < 100:
                 new_data["visit_summary"] = response.strip()
+                logger.info(f"🔍 EXTRACT_RESPONSE: Using response as visit summary: {response.strip()}")
         
-        logger.info(f"🔍 EXTRACT_RESPONSE: From '{response}': {new_data}")
+        logger.info(f"🔍 EXTRACT_RESPONSE: Final extracted data: {new_data}")
         return new_data
 
     def _parse_datetime(self, text: str) -> Optional[datetime]:

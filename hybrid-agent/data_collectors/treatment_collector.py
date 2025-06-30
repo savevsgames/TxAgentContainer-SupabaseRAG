@@ -65,12 +65,15 @@ class TreatmentCollector:
     def process_response(self, response: str, current_data: Dict[str, Any], questions_asked: List[str]) -> Dict[str, Any]:
         """Process user response and update data."""
         logger.info(f"🔄 TREATMENT_COLLECTOR: Processing response: {response}")
+        logger.info(f"🔄 TREATMENT_COLLECTOR: Current data: {current_data}")
         
-        # Extract new data from response
+        # Extract new data from response - now extracts ALL possible fields
         new_data = self._extract_from_response(response, current_data, questions_asked)
         
         # Update data
         updated_data = {**current_data, **new_data}
+        
+        logger.info(f"🔄 TREATMENT_COLLECTOR: Updated data: {updated_data}")
         
         # Check if complete
         if self._is_complete(updated_data):
@@ -104,7 +107,8 @@ class TreatmentCollector:
         
         # Check for specific medications
         for med in medication_keywords:
-            if med in query_lower:
+            pattern = r'\b' + re.escape(med) + r'\b'
+            if re.search(pattern, query_lower):
                 data["name"] = med
                 data["treatment_type"] = "medication"
                 break
@@ -112,7 +116,8 @@ class TreatmentCollector:
         # If no specific medication found, look for treatment type
         if "name" not in data:
             for treatment_type in self.treatment_types:
-                if treatment_type in query_lower:
+                pattern = r'\b' + re.escape(treatment_type) + r'\b'
+                if re.search(pattern, query_lower):
                     data["treatment_type"] = treatment_type
                     break
         
@@ -149,71 +154,92 @@ class TreatmentCollector:
         return data
 
     def _extract_from_response(self, response: str, current_data: Dict[str, Any], questions_asked: List[str]) -> Dict[str, Any]:
-        """Extract data from user response to specific question."""
+        """Extract data from user response - now extracts ALL possible fields."""
         new_data = {}
         response_lower = response.lower().strip()
         
-        # Determine what we're likely asking about
-        missing_fields = [field for field in self.required_fields + self.optional_fields 
-                         if field not in current_data]
+        logger.info(f"🔍 EXTRACT_RESPONSE: Analyzing response: '{response}'")
         
-        # If we're missing name
-        if "name" in missing_fields:
-            # Use response as treatment name if reasonable
+        # ALWAYS try to extract treatment name
+        medication_keywords = [
+            "ibuprofen", "advil", "motrin", "tylenol", "acetaminophen", "aspirin",
+            "aleve", "naproxen", "benadryl", "claritin", "zyrtec",
+            "lisinopril", "metformin", "atorvastatin", "omeprazole"
+        ]
+        
+        for med in medication_keywords:
+            pattern = r'\b' + re.escape(med) + r'\b'
+            if re.search(pattern, response_lower):
+                new_data["name"] = med
+                new_data["treatment_type"] = "medication"
+                logger.info(f"🔍 EXTRACT_RESPONSE: Found medication: {med}")
+                break
+        
+        # If no specific medication, use response as name if reasonable
+        if "name" not in new_data and "name" not in current_data:
             if len(response.strip()) > 2 and len(response.strip()) < 50:
                 new_data["name"] = response.strip().lower()
+                logger.info(f"🔍 EXTRACT_RESPONSE: Using response as treatment name: {response.strip().lower()}")
         
-        # If we're missing treatment_type
-        if "treatment_type" in missing_fields:
-            for treatment_type in self.treatment_types:
-                if treatment_type in response_lower:
-                    new_data["treatment_type"] = treatment_type
-                    break
-            
-            # Default to medication if not specified
-            if "treatment_type" not in new_data:
-                new_data["treatment_type"] = "medication"
+        # ALWAYS try to extract treatment type
+        for treatment_type in self.treatment_types:
+            pattern = r'\b' + re.escape(treatment_type) + r'\b'
+            if re.search(pattern, response_lower):
+                new_data["treatment_type"] = treatment_type
+                logger.info(f"🔍 EXTRACT_RESPONSE: Found treatment type: {treatment_type}")
+                break
         
-        # If we're missing dosage
-        if "dosage" in missing_fields:
-            dosage_patterns = [
-                r"(\d+)\s*mg",
-                r"(\d+)\s*(?:tablet|pill|capsule)s?",
-                r"(\d+)\s*times?\s+(?:a\s+)?day",
-                r"once\s+(?:a\s+)?day",
-                r"twice\s+(?:a\s+)?day"
-            ]
-            
-            for pattern in dosage_patterns:
-                match = re.search(pattern, response_lower)
-                if match:
-                    new_data["dosage"] = match.group(0)
-                    break
-            
-            # If no pattern matched, use the response as-is if reasonable
-            if "dosage" not in new_data and len(response.strip()) > 1:
+        # Default to medication if not specified
+        if "treatment_type" not in new_data and "treatment_type" not in current_data:
+            new_data["treatment_type"] = "medication"
+            logger.info(f"🔍 EXTRACT_RESPONSE: Defaulting to medication type")
+        
+        # ALWAYS try to extract dosage
+        dosage_patterns = [
+            r"(\d+)\s*mg",
+            r"(\d+)\s*(?:tablet|pill|capsule)s?",
+            r"(\d+)\s*times?\s+(?:a\s+)?day",
+            r"once\s+(?:a\s+)?day",
+            r"twice\s+(?:a\s+)?day"
+        ]
+        
+        for pattern in dosage_patterns:
+            match = re.search(pattern, response_lower)
+            if match:
+                new_data["dosage"] = match.group(0)
+                logger.info(f"🔍 EXTRACT_RESPONSE: Found dosage: {match.group(0)}")
+                break
+        
+        # If no pattern matched, use the response as-is if reasonable
+        if "dosage" not in new_data and "dosage" not in current_data and len(response.strip()) > 1:
+            # Check if this looks like a dosage response
+            if any(word in response_lower for word in ["mg", "tablet", "pill", "capsule", "times", "day", "once", "twice"]):
                 new_data["dosage"] = response.strip()
+                logger.info(f"🔍 EXTRACT_RESPONSE: Using response as dosage: {response.strip()}")
         
-        # If we're missing duration
-        if "duration" in missing_fields:
-            duration_patterns = [
-                r"(\d+)\s*(?:day|week|month)s?",
-                r"for\s+(\d+)\s*(?:day|week|month)s?",
-                r"ongoing",
-                r"as\s+needed"
-            ]
-            
-            for pattern in duration_patterns:
-                match = re.search(pattern, response_lower)
-                if match:
-                    new_data["duration"] = match.group(0)
-                    break
-            
-            # If no pattern matched, use response as-is if reasonable
-            if "duration" not in new_data and len(response.strip()) > 1:
+        # ALWAYS try to extract duration
+        duration_patterns = [
+            r"(\d+)\s*(?:day|week|month)s?",
+            r"for\s+(\d+)\s*(?:day|week|month)s?",
+            r"ongoing",
+            r"as\s+needed"
+        ]
+        
+        for pattern in duration_patterns:
+            match = re.search(pattern, response_lower)
+            if match:
+                new_data["duration"] = match.group(0)
+                logger.info(f"🔍 EXTRACT_RESPONSE: Found duration: {match.group(0)}")
+                break
+        
+        # If no pattern matched, use response as-is if reasonable
+        if "duration" not in new_data and "duration" not in current_data and len(response.strip()) > 1:
+            # Check if this looks like a duration response
+            if any(word in response_lower for word in ["day", "week", "month", "ongoing", "needed", "long"]):
                 new_data["duration"] = response.strip()
+                logger.info(f"🔍 EXTRACT_RESPONSE: Using response as duration: {response.strip()}")
         
-        logger.info(f"🔍 EXTRACT_RESPONSE: From '{response}': {new_data}")
+        logger.info(f"🔍 EXTRACT_RESPONSE: Final extracted data: {new_data}")
         return new_data
 
     def _get_next_question(self, data: Dict[str, Any], questions_asked: List[str]) -> Optional[str]:
