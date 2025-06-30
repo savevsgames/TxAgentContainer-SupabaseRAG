@@ -212,10 +212,14 @@ class AdvancedNLPProcessor:
                         
                         return result
         
-        # Fallback to basic extraction
+        # Enhanced basic symptoms list with common terms
         basic_symptoms = [
             "headache", "migraine", "fever", "cough", "nausea", "dizziness",
-            "fatigue", "rash", "swelling", "bruising", "numbness", "tingling"
+            "fatigue", "rash", "swelling", "bruising", "numbness", "tingling",
+            "toothache", "earache", "sore throat", "runny nose", "congestion",
+            "stomach ache", "back pain", "chest pain", "joint pain", "muscle ache",
+            "heartburn", "constipation", "diarrhea", "vomiting", "bloating",
+            "cramps", "weakness", "stiffness", "burning", "itching"
         ]
         
         for symptom in basic_symptoms:
@@ -384,7 +388,7 @@ class AdvancedNLPProcessor:
         combined_text = " ".join(user_messages).lower()
         
         # Look for previously mentioned symptoms
-        common_symptoms = ["headache", "pain", "nausea", "fever", "cough", "dizziness"]
+        common_symptoms = ["headache", "pain", "nausea", "fever", "cough", "dizziness", "toothache"]
         for symptom in common_symptoms:
             if symptom in combined_text:
                 context["mentioned_symptoms"].append(symptom)
@@ -478,7 +482,7 @@ class AdvancedNLPProcessor:
         intent_indicators = ["log", "record", "track", "save", "experiencing", "having", "feeling"]
         if any(indicator in query_lower for indicator in intent_indicators):
             flow_analysis["user_intent_clarity"] = "clear"
-        elif any(symptom in query_lower for symptom in ["pain", "hurt", "ache", "sick", "unwell"]):
+        elif any(symptom in query_lower for symptom in ["pain", "hurt", "ache", "sick", "unwell", "toothache"]):
             flow_analysis["user_intent_clarity"] = "implicit"
         # else: remains "unclear" as initialized
         

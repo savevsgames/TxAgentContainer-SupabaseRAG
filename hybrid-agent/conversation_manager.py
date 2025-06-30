@@ -62,6 +62,11 @@ class ConversationManager:
                 "general": "For pain management, rest, appropriate positioning, and over-the-counter pain relievers may help.",
                 "severe": "Severe pain (8+/10) or pain that interferes with daily activities should be evaluated by a healthcare provider.",
                 "chronic": "Persistent pain lasting more than a few days may require medical evaluation."
+            },
+            "toothache": {
+                "general": "For toothaches, rinsing with warm salt water and over-the-counter pain relievers may provide temporary relief.",
+                "severe": "Severe tooth pain may indicate an infection or serious dental issue that requires prompt dental care.",
+                "chronic": "Persistent tooth pain should be evaluated by a dentist as soon as possible."
             }
         }
 
@@ -92,7 +97,7 @@ class ConversationManager:
         # Extract comprehensive data (symptoms, treatments, appointments)
         extracted_data = self.nlp_processor.extract_comprehensive_symptom_data(query, conversation_history)
         
-        # Determine conversation strategy with improved logic
+        # Determine conversation strategy with improved logic - prioritize tracking intents
         strategy = self._determine_conversation_strategy(flow_analysis, extracted_data, user_profile, query)
         
         # Generate appropriate response based on strategy
@@ -122,7 +127,7 @@ class ConversationManager:
         user_profile: Optional[Dict[str, Any]],
         query: str
     ) -> Dict[str, Any]:
-        """Determine the appropriate conversation strategy with improved bedside manner."""
+        """Determine the appropriate conversation strategy with improved bedside manner and prioritized tracking."""
         
         strategy = {
             "type": "general_conversation",  # Default to general conversation
@@ -133,13 +138,7 @@ class ConversationManager:
         
         query_lower = query.lower()
         
-        # 1. GREETING DETECTION
-        if self._is_greeting(query_lower):
-            strategy["type"] = "greeting"
-            strategy["confidence"] = 0.9
-            return strategy
-        
-        # 2. EMERGENCY DETECTION (Highest Priority)
+        # 1. EMERGENCY DETECTION (Highest Priority)
         if self._detect_emergency_indicators(extracted_data, user_profile):
             strategy["type"] = "emergency_response"
             strategy["action"] = "alert_emergency"
@@ -147,13 +146,19 @@ class ConversationManager:
             strategy["confidence"] = 0.95
             return strategy
         
-        # 3. TRACKING INTENT DETECTION
+        # 2. TRACKING INTENT DETECTION (High Priority - moved up)
         tracking_type = self._detect_tracking_intent(query_lower, extracted_data)
         if tracking_type:
             strategy["type"] = f"{tracking_type}_tracking_loop"
             strategy["action"] = f"start_{tracking_type}_tracking"
             strategy["confidence"] = 0.9
             strategy["priority"] = "high"
+            return strategy
+        
+        # 3. GREETING DETECTION
+        if self._is_greeting(query_lower):
+            strategy["type"] = "greeting"
+            strategy["confidence"] = 0.9
             return strategy
         
         # 4. HISTORY REQUESTS
@@ -179,12 +184,16 @@ class ConversationManager:
         return strategy
 
     def _detect_tracking_intent(self, query_lower: str, extracted_data: Dict[str, Any]) -> Optional[str]:
-        """Detect what type of tracking the user wants to do."""
+        """Detect what type of tracking the user wants to do - enhanced to catch more symptom mentions."""
         
-        # Symptom tracking indicators
+        # Enhanced symptom tracking indicators
         symptom_indicators = [
             "symptom", "pain", "hurt", "ache", "feel", "experiencing", "having",
-            "headache", "fever", "nausea", "dizziness", "fatigue", "sick", "unwell"
+            "headache", "fever", "nausea", "dizziness", "fatigue", "sick", "unwell",
+            "toothache", "earache", "sore throat", "stomach ache", "back pain",
+            "chest pain", "joint pain", "muscle ache", "heartburn", "constipation",
+            "diarrhea", "vomiting", "bloating", "cramps", "weakness", "stiffness",
+            "burning", "itching", "rash", "swelling", "bruising", "numbness", "tingling"
         ]
         
         # Treatment/medication tracking indicators
@@ -213,8 +222,12 @@ class ConversationManager:
             elif any(indicator in query_lower for indicator in symptom_indicators):
                 return "symptom"
         
+        # Enhanced implicit detection - if symptom name is extracted, likely wants to track it
+        if extracted_data.get("symptom_name"):
+            return "symptom"
+        
         # Check for implicit mentions with context
-        if extracted_data.get("symptom_name") and any(indicator in query_lower for indicator in symptom_indicators):
+        if any(indicator in query_lower for indicator in symptom_indicators):
             return "symptom"
         
         # Check for medication names or treatment context
@@ -386,7 +399,7 @@ class ConversationManager:
         query_lower = original_query.lower()
         
         # Try to identify the health topic
-        health_topics = ["cold", "flu", "fever", "headache", "pain", "medication", "treatment", "symptoms"]
+        health_topics = ["cold", "flu", "fever", "headache", "pain", "medication", "treatment", "symptoms", "toothache"]
         for topic_word in health_topics:
             if topic_word in query_lower:
                 topic = topic_word
@@ -418,7 +431,7 @@ class ConversationManager:
         extracted_data: Dict[str, Any], 
         user_profile: Optional[Dict[str, Any]]
     ) -> str:
-        """Get contextual medical advice based on extracted data and user profile."""
+        """Get contextual medical advice based on extracted data and user profile - without disclaimer."""
         
         symptom_name = extracted_data.get("symptom_name", "").lower()
         severity = extracted_data.get("severity")
@@ -435,7 +448,7 @@ class ConversationManager:
                 break
         
         if not advice_category:
-            return "💡 This information is for educational purposes only and is not a substitute for professional medical advice."
+            return ""
         
         advice_templates = self.medical_advice_templates[advice_category]
         
@@ -447,9 +460,7 @@ class ConversationManager:
         else:
             advice = advice_templates["general"]
         
-        # Add standard disclaimer
-        advice = f"💡 {advice} This information is for educational purposes only and is not a substitute for professional medical advice."
-        
+        # Return advice without disclaimer (UI will handle disclaimer)
         return advice
 
     def _detect_emergency_indicators(
@@ -539,9 +550,9 @@ class ConversationManager:
         else:
             enhanced_response = base_response
         
-        # Add medical advice if available
+        # Add medical advice if available (without disclaimer since UI handles it)
         if medical_advice:
-            enhanced_response += f"\n\n{medical_advice}"
+            enhanced_response += f"\n\n💡 {medical_advice}"
         
         # Add urgency indicators
         if urgency_level == "critical":

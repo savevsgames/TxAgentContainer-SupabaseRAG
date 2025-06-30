@@ -55,7 +55,7 @@ class SymptomTracker:
 
     def start_symptom_tracking(self, user_id: str, initial_query: str) -> Dict[str, Any]:
         """Start a new symptom tracking session."""
-        session_id = f"{user_id}_{datetime.now().timestamp()}"
+        session_id = f"symptom_{user_id}_{datetime.now().timestamp()}"
         
         # Initialize session with extracted data from initial query
         initial_data = self._extract_initial_data(initial_query)
@@ -116,11 +116,14 @@ class SymptomTracker:
         data = {}
         query_lower = query.lower()
         
-        # Extract symptom name
+        # Enhanced symptom keywords list including toothache and other common symptoms
         symptom_keywords = [
             "headache", "migraine", "fever", "cough", "nausea", "dizziness",
             "fatigue", "pain", "ache", "sore throat", "runny nose", "congestion",
-            "stomach ache", "back pain", "chest pain", "joint pain"
+            "stomach ache", "back pain", "chest pain", "joint pain", "toothache",
+            "earache", "muscle ache", "heartburn", "constipation", "diarrhea",
+            "vomiting", "bloating", "cramps", "weakness", "stiffness", "burning",
+            "itching", "rash", "swelling", "bruising", "numbness", "tingling"
         ]
         
         for symptom in symptom_keywords:
@@ -158,7 +161,8 @@ class SymptomTracker:
         body_parts = [
             "head", "forehead", "temple", "neck", "throat", "chest", "back",
             "stomach", "abdomen", "arm", "leg", "knee", "shoulder", "wrist",
-            "ankle", "foot", "hand", "eye", "ear", "nose"
+            "ankle", "foot", "hand", "eye", "ear", "nose", "tooth", "teeth",
+            "jaw", "mouth"
         ]
         
         for part in body_parts:
@@ -177,7 +181,8 @@ class SymptomTracker:
         if "symptom_name" not in existing_data:
             symptom_keywords = [
                 "headache", "migraine", "fever", "cough", "nausea", "dizziness",
-                "fatigue", "pain", "ache", "sore throat", "runny nose", "congestion"
+                "fatigue", "pain", "ache", "sore throat", "runny nose", "congestion",
+                "toothache", "earache", "stomach ache", "back pain", "chest pain"
             ]
             for symptom in symptom_keywords:
                 if symptom in response_lower:
@@ -217,7 +222,8 @@ class SymptomTracker:
         if "location" not in existing_data:
             body_parts = [
                 "head", "forehead", "temple", "neck", "throat", "chest", "back",
-                "stomach", "abdomen", "arm", "leg", "knee", "shoulder", "wrist"
+                "stomach", "abdomen", "arm", "leg", "knee", "shoulder", "wrist",
+                "tooth", "teeth", "jaw", "mouth", "ear", "eye"
             ]
             for part in body_parts:
                 if part in response_lower:

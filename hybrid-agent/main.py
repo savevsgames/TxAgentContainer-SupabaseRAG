@@ -625,7 +625,7 @@ async def chat(
             
             # Add medical advice if present (but no disclaimer since it's in the UI)
             medical_advice = response_data.get("medical_advice", "")
-            if medical_advice and "This information is for educational purposes" not in medical_advice:
+            if medical_advice:
                 final_response += f"\n\n💡 {medical_advice}"
             
             # Handle tracking session continuation
@@ -633,7 +633,7 @@ async def chat(
             
             return ChatResponse(
                 response=final_response,
-                sources=[],
+                sources=[],  # No sources for conversational responses
                 processing_time=int((time.time() - start_time) * 1000),
                 model="Symptom Savior",
                 tokens_used=0,
@@ -682,7 +682,7 @@ async def chat(
             if follow_up_questions:
                 final_response += f"\n\n❓ {follow_up_questions[0]}"
             
-            # Format sources for response
+            # Format sources for response (but suppress for conversational responses)
             sources = [
                 {
                     "content": doc["content"][:200] + "...",
