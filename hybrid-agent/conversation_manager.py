@@ -23,14 +23,14 @@ class ConversationManager:
         # Response templates for different conversation stages
         self.response_templates = {
             "symptom_logged_complete": [
-                "✅ I've successfully logged your {symptom_name} with a severity of {severity}/10. {additional_info}",
-                "✅ Your {symptom_name} has been recorded in your symptom history. {additional_info}",
-                "✅ I've added your {symptom_name} to your health log. {additional_info}"
+                "✅ I've logged your {symptom_name} in your symptom history.",
+                "✅ Your {symptom_name} has been recorded.",
+                "✅ I've added your {symptom_name} to your health log."
             ],
             "symptom_logged_partial": [
-                "✅ I've logged your {symptom_name}. {follow_up_question}",
-                "✅ Your {symptom_name} has been recorded. {follow_up_question}",
-                "✅ I've noted your {symptom_name}. {follow_up_question}"
+                "✅ I've noted your {symptom_name}.",
+                "✅ Your {symptom_name} has been recorded.",
+                "✅ I've logged your {symptom_name}."
             ],
             "clarifying_questions": [
                 "I'd like to help you track this symptom. {question}",
@@ -286,22 +286,9 @@ class ConversationManager:
         symptom_name = symptom_data.get("symptom_name", "symptom")
         severity = symptom_data.get("severity")
         
-        # Build confirmation message
+        # Build concise confirmation message
         template = self.response_templates["symptom_logged_complete"][0]
-        additional_info = ""
-        
-        if severity:
-            additional_info = f"The severity level of {severity}/10 has been noted."
-        
-        if symptom_data.get("duration_hours"):
-            duration_text = self._format_duration(symptom_data["duration_hours"])
-            additional_info += f" Duration: {duration_text}."
-        
-        message = template.format(
-            symptom_name=symptom_name,
-            severity=severity or "unspecified",
-            additional_info=additional_info
-        )
+        message = template.format(symptom_name=symptom_name)
         
         # Add contextual medical advice
         medical_advice = self._get_contextual_medical_advice(symptom_data, user_profile)
@@ -323,13 +310,13 @@ class ConversationManager:
         symptom_name = symptom_data.get("symptom_name", "symptom")
         follow_up_questions = symptom_data.get("follow_up_questions", [])
         
+        # Generate concise acknowledgment message
         template = self.response_templates["symptom_logged_partial"][0]
-        follow_up_question = follow_up_questions[0] if follow_up_questions else "Can you provide more details?"
+        message = template.format(symptom_name=symptom_name)
         
-        message = template.format(
-            symptom_name=symptom_name,
-            follow_up_question=follow_up_question
-        )
+        # Ensure we have follow-up questions
+        if not follow_up_questions:
+            follow_up_questions = ["Can you provide more details about your symptoms?"]
         
         return {
             "message": message,
@@ -599,7 +586,7 @@ class ConversationManager:
         elif urgency_level == "high":
             enhanced_response = f"⚠️ Important: {enhanced_response}"
         
-        # Add follow-up questions
+        # Add only the first follow-up question to maintain single-turn conversation
         follow_up_questions = response_data.get("follow_up_questions", [])
         if follow_up_questions:
             enhanced_response += f"\n\n❓ {follow_up_questions[0]}"

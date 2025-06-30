@@ -664,34 +664,64 @@ async def chat(
             "phase2_conversation_management": conversation_result is not None
         })
         
-        # Perform similarity search - pass the JWT token string
-        logger.info(f"🔍 CHAT: Calling similarity_search with JWT token")
-        similar_docs = embedder.similarity_search(
-            query=request.query,
-            user_id=user_id,
-            top_k=request.top_k,
-            jwt=token  # Pass the JWT token string
-        )
+        # IMPROVED CONVERSATIONAL FLOW: Determine if we should call LLM based on conversation strategy
+        should_call_llm = True
+        similar_docs = []
+        base_response = ""
+        tokens_used = 0
         
-        if not similar_docs:
-            base_response = "I couldn't find any relevant information to answer your question. Please make sure you have uploaded some documents first."
-            tokens_used = 0
-        else:
-            # Generate response using LLM if available - now with user context
-            if llm_handler:
-                response = await llm_handler.generate_response(
-                    query=request.query,
-                    context=similar_docs,
-                    temperature=request.temperature,
-                    user_profile=user_profile,
-                    conversation_history=conversation_history
-                )
-                tokens_used = len(response.split())  # Rough token estimate
-                base_response = response
+        if conversation_result:
+            strategy_type = conversation_result.get("strategy", {}).get("type")
+            
+            # For these conversation strategies, suppress LLM and let conversation_manager handle the response
+            conversational_strategies = [
+                "symptom_logging", 
+                "partial_logging_with_follow_up", 
+                "emergency_response", 
+                "symptom_history", 
+                "general_conversation"
+            ]
+            
+            if strategy_type in conversational_strategies:
+                logger.info(f"🔍 CHAT: Suppressing LLM for conversational strategy: {strategy_type}")
+                should_call_llm = False
+                similar_docs = []
+                base_response = ""
+                tokens_used = 0
+        
+        # Only perform similarity search and LLM generation for non-conversational strategies
+        if should_call_llm:
+            logger.info(f"🔍 CHAT: Calling similarity_search and LLM for strategy")
+            
+            # Perform similarity search - pass the JWT token string
+            similar_docs = embedder.similarity_search(
+                query=request.query,
+                user_id=user_id,
+                top_k=request.top_k,
+                jwt=token  # Pass the JWT token string
+            )
+            
+            if not similar_docs:
+                base_response = "I couldn't find any relevant information to answer your question. Please make sure you have uploaded some documents first."
+                tokens_used = 0
             else:
-                # Fallback response if LLM not available
-                base_response = f"Based on the documents I found, here's relevant information: {similar_docs[0]['content'][:200]}..."
-                tokens_used = len(base_response.split())
+                # Generate response using LLM if available - now with user context
+                if llm_handler:
+                    response = await llm_handler.generate_response(
+                        query=request.query,
+                        context=similar_docs,
+                        temperature=request.temperature,
+                        user_profile=user_profile,
+                        conversation_history=conversation_history
+                    )
+                    tokens_used = len(response.split())  # Rough token estimate
+                    base_response = response
+                else:
+                    # Fallback response if LLM not available
+                    base_response = f"Based on the documents I found, here's relevant information: {similar_docs[0]['content'][:200]}..."
+                    tokens_used = len(base_response.split())
+        else:
+            logger.info(f"🔍 CHAT: Skipping similarity search and LLM for conversational strategy")
         
         # PHASE 2.8: Enhanced response generation with improved conversation context
         if conversation_manager and conversation_result:
@@ -757,7 +787,8 @@ async def chat(
             "used_conversation_history": conversation_history is not None and len(conversation_history) > 0,
             "intent_detected": intent_type,
             "agent_action_taken": agent_action_result is not None,
-            "phase2_conversation_management": conversation_result is not None
+            "phase2_conversation_management": conversation_result is not None,
+            "llm_called": should_call_llm
         })
         
         # Build response with agent action metadata
