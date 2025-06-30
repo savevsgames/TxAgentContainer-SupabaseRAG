@@ -2,7 +2,7 @@
 Conversation Manager for TxAgent Agent Awareness Phase 2.
 
 This module manages conversation flow, context, and intelligent response generation
-for natural symptom tracking conversations with improved bedside manner.
+for natural symptom tracking conversations with improved bedside manner and enhanced flexibility.
 """
 
 import logging
@@ -18,7 +18,7 @@ from appointment_tracker import appointment_tracker
 logger = logging.getLogger("conversation_manager")
 
 class ConversationManager:
-    """Manages conversation flow and context for intelligent tracking with improved bedside manner."""
+    """Manages conversation flow and context for intelligent tracking with improved bedside manner and enhanced flexibility."""
     
     def __init__(self):
         self.nlp_processor = AdvancedNLPProcessor()
@@ -43,6 +43,21 @@ class ConversationManager:
             "emergency_response": [
                 "🚨 URGENT: Based on your symptoms, this may require immediate medical attention. Please contact emergency services (911) or go to the nearest emergency room immediately.",
                 "🚨 This sounds like it could be a medical emergency. Please seek immediate medical attention by calling 911 or going to the nearest emergency room."
+            ],
+            "cancel_tracking": [
+                "No problem! I've cancelled the current tracking session. How else can I help you?",
+                "Tracking cancelled. What would you like to do instead?",
+                "I've stopped the current tracking. Is there something else I can help you with?"
+            ],
+            "review_tracking": [
+                "Here's what we've collected so far:",
+                "Let me show you the information we have:",
+                "Here's your current tracking progress:"
+            ],
+            "interruption_redirect": [
+                "I'm doing well, thank you for asking! Let's get back to tracking your health information.",
+                "Thanks for asking! Now, let's continue with your health tracking.",
+                "I appreciate that! Let's finish up what we were working on."
             ]
         }
         
@@ -568,7 +583,16 @@ class ConversationManager:
         user_response: str, 
         user_id: str
     ) -> Dict[str, Any]:
-        """Continue an existing tracking session."""
+        """Continue an existing tracking session with enhanced flexibility."""
+        
+        # Check for control commands first
+        control_result = self._handle_control_commands(session_id, user_response, user_id)
+        if control_result:
+            return control_result
+        
+        # Check for out-of-context queries and handle gracefully
+        if self._is_interruption_query(user_response):
+            return self._handle_interruption_and_redirect(session_id, user_response, user_id)
         
         # Determine which tracker to use based on session ID
         if session_id.startswith("symptom_"):
@@ -630,3 +654,156 @@ class ConversationManager:
                 "medical_advice": "",
                 "urgency_level": "normal"
             }
+
+    def _handle_control_commands(
+        self, 
+        session_id: str, 
+        user_response: str, 
+        user_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Handle user control commands like cancel, review, edit."""
+        
+        response_lower = user_response.lower().strip()
+        
+        # Cancel commands
+        if any(cmd in response_lower for cmd in ["cancel", "stop", "quit", "exit", "nevermind", "never mind"]):
+            return self._cancel_tracking_session(session_id)
+        
+        # Review commands
+        if any(cmd in response_lower for cmd in ["review", "show me", "what have", "summary", "progress"]):
+            return self._review_tracking_session(session_id)
+        
+        # Edit commands (basic implementation)
+        if any(cmd in response_lower for cmd in ["edit", "change", "modify", "update"]):
+            return self._handle_edit_request(session_id, user_response)
+        
+        return None
+
+    def _cancel_tracking_session(self, session_id: str) -> Dict[str, Any]:
+        """Cancel the current tracking session."""
+        
+        # Determine tracker type and cancel session
+        if session_id.startswith("symptom_"):
+            result = symptom_tracker.cancel_session(session_id)
+        elif session_id.startswith("treatment_"):
+            result = treatment_tracker.cancel_session(session_id)
+        elif session_id.startswith("appointment_"):
+            result = appointment_tracker.cancel_session(session_id)
+        else:
+            result = {"success": False}
+        
+        if result.get("success", True):  # Default to success if not specified
+            message = self.response_templates["cancel_tracking"][0]
+        else:
+            message = "I couldn't find an active tracking session to cancel. How can I help you?"
+        
+        return {
+            "message": message,
+            "tracking_session_id": None,
+            "follow_up_questions": [],
+            "medical_advice": "",
+            "urgency_level": "normal"
+        }
+
+    def _review_tracking_session(self, session_id: str) -> Dict[str, Any]:
+        """Review the current tracking session progress."""
+        
+        # Get session status from appropriate tracker
+        if session_id.startswith("symptom_"):
+            status = symptom_tracker.get_session_summary(session_id)
+        elif session_id.startswith("treatment_"):
+            status = treatment_tracker.get_session_summary(session_id)
+        elif session_id.startswith("appointment_"):
+            status = appointment_tracker.get_session_summary(session_id)
+        else:
+            status = None
+        
+        if status:
+            message = f"{self.response_templates['review_tracking'][0]}\n\n{status['summary']}"
+            if status.get("next_question"):
+                message += f"\n\n❓ {status['next_question']}"
+        else:
+            message = "I couldn't find an active tracking session to review."
+        
+        return {
+            "message": message,
+            "tracking_session_id": session_id if status else None,
+            "follow_up_questions": [],
+            "medical_advice": "",
+            "urgency_level": "normal"
+        }
+
+    def _handle_edit_request(self, session_id: str, user_response: str) -> Dict[str, Any]:
+        """Handle basic edit requests (simplified implementation)."""
+        
+        message = "What would you like to change? You can tell me the new information and I'll update it."
+        
+        return {
+            "message": message,
+            "tracking_session_id": session_id,
+            "follow_up_questions": [],
+            "medical_advice": "",
+            "urgency_level": "normal"
+        }
+
+    def _is_interruption_query(self, user_response: str) -> bool:
+        """Check if the user's response is an interruption/out-of-context query."""
+        
+        response_lower = user_response.lower()
+        
+        # Common interruption patterns
+        interruption_patterns = [
+            "how are you", "what's up", "how's it going",
+            "what can you do", "help me", "what is",
+            "tell me about", "explain", "what's the weather"
+        ]
+        
+        return any(pattern in response_lower for pattern in interruption_patterns)
+
+    def _handle_interruption_and_redirect(
+        self, 
+        session_id: str, 
+        user_response: str, 
+        user_id: str
+    ) -> Dict[str, Any]:
+        """Handle interruption gracefully and redirect back to tracking."""
+        
+        # Generate brief response to the interruption
+        response_lower = user_response.lower()
+        
+        if "how are you" in response_lower:
+            brief_response = "I'm doing well, thank you for asking!"
+        elif "what can you do" in response_lower:
+            brief_response = "I can help with health tracking and questions."
+        else:
+            brief_response = "That's a good question!"
+        
+        # Get the last question from the tracking session
+        last_question = self._get_last_tracking_question(session_id)
+        
+        if last_question:
+            message = f"{brief_response} Let's get back to tracking your health information.\n\n❓ {last_question}"
+        else:
+            message = f"{brief_response} Let's continue with your health tracking."
+        
+        return {
+            "message": message,
+            "tracking_session_id": session_id,
+            "follow_up_questions": [],
+            "medical_advice": "",
+            "urgency_level": "normal"
+        }
+
+    def _get_last_tracking_question(self, session_id: str) -> Optional[str]:
+        """Get the last question asked in the tracking session."""
+        
+        if session_id.startswith("symptom_"):
+            status = symptom_tracker.get_session_status(session_id)
+        elif session_id.startswith("treatment_"):
+            status = treatment_tracker.get_session_status(session_id)
+        elif session_id.startswith("appointment_"):
+            status = appointment_tracker.get_session_status(session_id)
+        else:
+            return None
+        
+        return status.get("last_question") if status else None

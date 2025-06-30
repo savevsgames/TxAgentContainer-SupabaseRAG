@@ -3,7 +3,7 @@ Symptom Tracking Loop Manager for TxAgent.
 
 This module handles the conversational loop for symptom tracking,
 managing incremental data collection and temporary storage until
-a complete symptom entry can be saved.
+a complete symptom entry can be saved. Enhanced with flexibility features.
 """
 
 import logging
@@ -18,7 +18,7 @@ from core.auth_service import auth_service
 logger = logging.getLogger("symptom_tracker")
 
 class SymptomTracker:
-    """Manages conversational symptom tracking with incremental data collection."""
+    """Manages conversational symptom tracking with incremental data collection and enhanced flexibility."""
     
     def __init__(self):
         # In-memory storage for incomplete symptom entries
@@ -54,7 +54,7 @@ class SymptomTracker:
         }
 
     def start_symptom_tracking(self, user_id: str, initial_query: str) -> Dict[str, Any]:
-        """Start a new symptom tracking session."""
+        """Start a new symptom tracking session with intelligent question skipping."""
         session_id = f"symptom_{user_id}_{datetime.now().timestamp()}"
         
         # Initialize session with extracted data from initial query
@@ -66,12 +66,13 @@ class SymptomTracker:
             "created_at": datetime.now().isoformat(),
             "last_updated": datetime.now().isoformat(),
             "questions_asked": [],
-            "is_complete": False
+            "is_complete": False,
+            "last_question": None
         }
         
         logger.info(f"🔍 SYMPTOM_TRACKER: Started session {session_id} with initial data: {initial_data}")
         
-        # Determine next question
+        # Determine next question (intelligent skipping)
         next_question = self._get_next_question(session_id)
         
         return {
@@ -82,13 +83,13 @@ class SymptomTracker:
         }
 
     def update_symptom_data(self, session_id: str, user_response: str) -> Dict[str, Any]:
-        """Update symptom data based on user response."""
+        """Update symptom data based on user response with intelligent extraction."""
         if session_id not in self.active_sessions:
             return {"error": "Session not found"}
         
         session = self.active_sessions[session_id]
         
-        # Extract new data from user response
+        # Extract new data from user response (enhanced to extract multiple fields at once)
         new_data = self._extract_data_from_response(user_response, session["symptom_data"])
         
         # Update session data
@@ -101,8 +102,10 @@ class SymptomTracker:
         if self._is_complete(session_id):
             return self._complete_symptom_entry(session_id)
         else:
-            # Ask next question
+            # Ask next question (intelligent skipping)
             next_question = self._get_next_question(session_id)
+            session["last_question"] = next_question
+            
             return {
                 "session_id": session_id,
                 "message": "Got it.",
@@ -112,7 +115,7 @@ class SymptomTracker:
             }
 
     def _extract_initial_data(self, query: str) -> Dict[str, Any]:
-        """Extract initial symptom data from user's query."""
+        """Extract initial symptom data from user's query with enhanced extraction."""
         data = {}
         query_lower = query.lower()
         
@@ -141,7 +144,7 @@ class SymptomTracker:
         else:
             # Look for single numbers that might be severity
             single_num = re.search(r"\b([1-9]|10)\b", query_lower)
-            if single_num and "severity" in query_lower or "scale" in query_lower:
+            if single_num and ("severity" in query_lower or "scale" in query_lower or "out of" in query_lower):
                 data["severity"] = int(single_num.group(1))
         
         # Extract duration
@@ -173,9 +176,11 @@ class SymptomTracker:
         return data
 
     def _extract_data_from_response(self, response: str, existing_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract data from user's response to a specific question."""
+        """Extract data from user's response to a specific question with enhanced multi-field extraction."""
         new_data = {}
         response_lower = response.lower()
+        
+        # Enhanced extraction - try to get multiple fields from a single response
         
         # If we're missing symptom_name, try to extract it
         if "symptom_name" not in existing_data:
@@ -233,12 +238,12 @@ class SymptomTracker:
         return new_data
 
     def _get_next_question(self, session_id: str) -> Optional[str]:
-        """Get the next question to ask the user."""
+        """Get the next question to ask the user with intelligent skipping."""
         session = self.active_sessions[session_id]
         symptom_data = session["symptom_data"]
         questions_asked = session["questions_asked"]
         
-        # Check required fields first
+        # Check required fields first - skip if already present
         for field in self.required_fields:
             if field not in symptom_data and field not in questions_asked:
                 session["questions_asked"].append(field)
@@ -247,7 +252,7 @@ class SymptomTracker:
                     question = question.format(symptom_name=symptom_data["symptom_name"])
                 return question
         
-        # Check optional fields (but only ask 1-2 more questions)
+        # Check optional fields (but only ask 1-2 more questions) - skip if already present
         optional_asked = [q for q in questions_asked if q in self.optional_fields]
         if len(optional_asked) < 2:
             for field in self.optional_fields:
@@ -472,7 +477,58 @@ class SymptomTracker:
             "is_complete": session.get("is_complete", False),
             "progress": self._calculate_progress(session_id),
             "current_data": self._format_current_data(session["symptom_data"]),
-            "questions_asked": len(session["questions_asked"])
+            "questions_asked": len(session["questions_asked"]),
+            "last_question": session.get("last_question")
+        }
+
+    def cancel_session(self, session_id: str) -> Dict[str, Any]:
+        """Cancel a tracking session."""
+        if session_id in self.active_sessions:
+            del self.active_sessions[session_id]
+            logger.info(f"✅ SYMPTOM_TRACKER: Cancelled session {session_id}")
+            return {"success": True}
+        return {"success": False, "error": "Session not found"}
+
+    def get_session_summary(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Get a formatted summary of the current session."""
+        if session_id not in self.active_sessions:
+            return None
+        
+        session = self.active_sessions[session_id]
+        symptom_data = session["symptom_data"]
+        
+        summary = self._format_summary(symptom_data)
+        progress = self._calculate_progress(session_id)
+        next_question = self._get_next_question(session_id)
+        
+        return {
+            "summary": summary if summary else "No symptom data collected yet.",
+            "progress": progress,
+            "next_question": next_question
+        }
+
+    def edit_field(self, session_id: str, field_name: str, new_value: Any) -> Dict[str, Any]:
+        """Edit a specific field in the session data."""
+        if session_id not in self.active_sessions:
+            return {"success": False, "error": "Session not found"}
+        
+        session = self.active_sessions[session_id]
+        
+        # Validate field name
+        valid_fields = self.required_fields + self.optional_fields
+        if field_name not in valid_fields:
+            return {"success": False, "error": f"Invalid field: {field_name}"}
+        
+        # Update the field
+        session["symptom_data"][field_name] = new_value
+        session["last_updated"] = datetime.now().isoformat()
+        
+        logger.info(f"✅ SYMPTOM_TRACKER: Updated {field_name} to {new_value} in session {session_id}")
+        
+        return {
+            "success": True,
+            "message": f"Updated {field_name} to {new_value}",
+            "current_data": self._format_current_data(session["symptom_data"])
         }
 
 # Global instance
