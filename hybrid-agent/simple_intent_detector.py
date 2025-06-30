@@ -18,10 +18,23 @@ class SimpleIntentDetector:
     def __init__(self):
         # Comprehensive symptom keywords - covers common health complaints
         self.symptom_keywords = [
-            # Pain-related
+            # Pain-related (single words)
             "headache", "migraine", "pain", "ache", "hurt", "hurting", "sore", "tender",
             "toothache", "earache", "backache", "stomach ache", "stomachache",
             "back pain", "chest pain", "joint pain", "muscle pain", "neck pain",
+            
+            # Pain-related (two-word variations)
+            "ear ache", "tooth ache", "stomach ache", "head ache",
+            
+            # Natural phrases people use
+            "i have a headache", "i have a sore", "i've got a", "i'm having",
+            "my head hurts", "my back hurts", "my stomach hurts", "my throat hurts",
+            "my ear hurts", "my tooth hurts", "my neck hurts", "my chest hurts",
+            "my knee hurts", "my shoulder hurts", "my arm hurts", "my leg hurts",
+            
+            # Possessive forms
+            "my headache", "my migraine", "my back pain", "my chest pain",
+            "my sore throat", "my ear ache", "my tooth ache", "my stomach ache",
             
             # Specific symptoms
             "fever", "nausea", "dizziness", "fatigue", "tired", "exhausted",
@@ -29,13 +42,27 @@ class SimpleIntentDetector:
             "sneezing", "itchy", "rash", "swelling", "bloating", "cramps",
             "heartburn", "constipation", "diarrhea", "vomiting", "nosebleed",
             
-            # Body parts with issues
+            # Body parts with issues (single words)
             "sore knee", "sore back", "sore neck", "sore shoulder", "sore wrist",
             "sore ankle", "sore foot", "sore hand", "sore arm", "sore leg",
             
+            # Body parts with issues (possessive)
+            "my sore knee", "my sore back", "my sore neck", "my sore shoulder",
+            "my sore wrist", "my sore ankle", "my sore foot", "my sore hand",
+            "my sore arm", "my sore leg", "my sore throat",
+            
             # General health states
             "sick", "unwell", "ill", "feeling bad", "not feeling well",
-            "under the weather", "coming down with", "symptoms"
+            "under the weather", "coming down with", "symptoms",
+            "i feel sick", "i'm sick", "i don't feel well", "feeling unwell",
+            
+            # Common symptom descriptions
+            "it hurts", "hurts when", "painful", "throbbing", "burning",
+            "sharp pain", "dull pain", "stabbing pain", "shooting pain",
+            
+            # Symptom onset phrases
+            "started hurting", "began hurting", "hurts since", "pain started",
+            "feeling pain", "experiencing pain", "having pain"
         ]
         
         # Treatment/medication keywords
@@ -51,7 +78,11 @@ class SimpleIntentDetector:
             
             # Treatment types
             "treatment", "therapy", "physical therapy", "exercise", "diet",
-            "supplement", "vitamin", "antibiotic", "inhaler", "cream", "ointment"
+            "supplement", "vitamin", "antibiotic", "inhaler", "cream", "ointment",
+            
+            # Natural phrases for treatments
+            "i'm taking", "i take", "i started", "prescribed me", "doctor gave me",
+            "on medication", "taking medicine", "using", "applying"
         ]
         
         # Appointment keywords
@@ -60,7 +91,11 @@ class SimpleIntentDetector:
             "physician", "nurse", "dentist", "specialist", "clinic", "hospital",
             "scheduled", "schedule", "book", "booking", "see", "seeing",
             "meeting", "consultation", "exam", "examination", "surgery",
-            "procedure", "follow-up", "followup"
+            "procedure", "follow-up", "followup",
+            
+            # Natural phrases for appointments
+            "i have an appointment", "seeing the doctor", "going to see",
+            "doctor visit", "medical appointment", "scheduled to see"
         ]
         
         # Greeting keywords
@@ -73,7 +108,7 @@ class SimpleIntentDetector:
         self.history_keywords = [
             "history", "show me", "list", "previous", "past", "logged",
             "recorded", "my symptoms", "my medications", "my appointments",
-            "what have i", "track record"
+            "what have i", "track record", "show my", "list my"
         ]
 
     def detect_intent(self, query: str) -> Dict[str, Any]:
@@ -155,11 +190,28 @@ class SimpleIntentDetector:
         data = {}
         query_lower = query.lower()
         
-        # Extract symptom name
+        # Extract symptom name - prioritize longer, more specific matches first
+        symptom_matches = []
         for keyword in self.symptom_keywords:
             if keyword in query_lower:
-                data["symptom_name"] = keyword
-                break
+                symptom_matches.append((keyword, len(keyword)))
+        
+        # Sort by length (longer matches are more specific)
+        if symptom_matches:
+            symptom_matches.sort(key=lambda x: x[1], reverse=True)
+            best_match = symptom_matches[0][0]
+            
+            # Clean up the symptom name
+            if best_match.startswith("my "):
+                best_match = best_match[3:]  # Remove "my "
+            if best_match.startswith("i have a "):
+                best_match = best_match[9:]  # Remove "i have a "
+            if best_match.startswith("i've got a "):
+                best_match = best_match[11:]  # Remove "i've got a "
+            if " hurts" in best_match:
+                best_match = best_match.replace(" hurts", "")
+            
+            data["symptom_name"] = best_match
         
         # Extract severity (numeric scale)
         severity_patterns = [
