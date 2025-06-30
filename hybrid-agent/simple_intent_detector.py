@@ -7,8 +7,8 @@ Designed to catch basic health tracking intents with high accuracy.
 """
 
 import logging
-from typing import Dict, Any, Optional, List
 import re
+from typing import Dict, Any, Optional, List
 
 logger = logging.getLogger("simple_intent_detector")
 
