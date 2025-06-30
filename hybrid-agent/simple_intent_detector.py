@@ -35,6 +35,7 @@ class SimpleIntentDetector:
             # Possessive forms
             "my headache", "my migraine", "my back pain", "my chest pain",
             "my sore throat", "my ear ache", "my tooth ache", "my stomach ache",
+            "my sore knee", "my sore back", "my sore neck", "my sore shoulder",
             
             # Specific symptoms
             "fever", "nausea", "dizziness", "fatigue", "tired", "exhausted",
@@ -113,7 +114,7 @@ class SimpleIntentDetector:
 
     def detect_intent(self, query: str) -> Dict[str, Any]:
         """
-        Detect user intent using reliable keyword matching.
+        Detect user intent using reliable keyword matching with regex word boundaries.
         
         Args:
             query: User's input text
@@ -126,7 +127,7 @@ class SimpleIntentDetector:
         logger.info(f"🔍 INTENT_DETECTOR: Analyzing query: '{query}'")
         
         # Check for greetings first (but only if it's a short query)
-        if len(query_lower.split()) <= 3 and self._matches_keywords(query_lower, self.greeting_keywords):
+        if len(query_lower.split()) <= 3 and self._matches_keywords_regex(query_lower, self.greeting_keywords):
             logger.info("🔍 INTENT_DETECTOR: Detected greeting")
             return {
                 "intent": "greeting",
@@ -135,7 +136,7 @@ class SimpleIntentDetector:
             }
         
         # Check for history requests
-        if self._matches_keywords(query_lower, self.history_keywords):
+        if self._matches_keywords_regex(query_lower, self.history_keywords):
             logger.info("🔍 INTENT_DETECTOR: Detected history request")
             return {
                 "intent": "history",
@@ -144,7 +145,7 @@ class SimpleIntentDetector:
             }
         
         # Check for symptoms (highest priority for health tracking)
-        if self._matches_keywords(query_lower, self.symptom_keywords):
+        if self._matches_keywords_regex(query_lower, self.symptom_keywords):
             logger.info("🔍 INTENT_DETECTOR: Detected symptom tracking intent")
             extracted_data = self._extract_symptom_data(query)
             return {
@@ -154,7 +155,7 @@ class SimpleIntentDetector:
             }
         
         # Check for treatments/medications
-        if self._matches_keywords(query_lower, self.treatment_keywords):
+        if self._matches_keywords_regex(query_lower, self.treatment_keywords):
             logger.info("🔍 INTENT_DETECTOR: Detected treatment tracking intent")
             extracted_data = self._extract_treatment_data(query)
             return {
@@ -164,7 +165,7 @@ class SimpleIntentDetector:
             }
         
         # Check for appointments
-        if self._matches_keywords(query_lower, self.appointment_keywords):
+        if self._matches_keywords_regex(query_lower, self.appointment_keywords):
             logger.info("🔍 INTENT_DETECTOR: Detected appointment tracking intent")
             extracted_data = self._extract_appointment_data(query)
             return {
@@ -181,9 +182,25 @@ class SimpleIntentDetector:
             "extracted_data": {}
         }
 
+    def _matches_keywords_regex(self, query_lower: str, keywords: List[str]) -> bool:
+        """Check if query matches any of the provided keywords using regex word boundaries."""
+        for keyword in keywords:
+            # Use word boundaries for exact matches, but handle multi-word phrases
+            if ' ' in keyword:
+                # For multi-word phrases, use the phrase as-is
+                pattern = re.escape(keyword)
+            else:
+                # For single words, use word boundaries
+                pattern = r'\b' + re.escape(keyword) + r'\b'
+            
+            if re.search(pattern, query_lower):
+                logger.info(f"🔍 KEYWORD_MATCH: Found '{keyword}' in query")
+                return True
+        return False
+
     def _matches_keywords(self, query_lower: str, keywords: List[str]) -> bool:
-        """Check if query matches any of the provided keywords."""
-        return any(keyword in query_lower for keyword in keywords)
+        """Legacy method - kept for backward compatibility."""
+        return self._matches_keywords_regex(query_lower, keywords)
 
     def _extract_symptom_data(self, query: str) -> Dict[str, Any]:
         """Extract symptom-specific data from the query."""
@@ -193,7 +210,14 @@ class SimpleIntentDetector:
         # Extract symptom name - prioritize longer, more specific matches first
         symptom_matches = []
         for keyword in self.symptom_keywords:
-            if keyword in query_lower:
+            if ' ' in keyword:
+                # Multi-word phrase
+                pattern = re.escape(keyword)
+            else:
+                # Single word with boundaries
+                pattern = r'\b' + re.escape(keyword) + r'\b'
+            
+            if re.search(pattern, query_lower):
                 symptom_matches.append((keyword, len(keyword)))
         
         # Sort by length (longer matches are more specific)
@@ -259,7 +283,8 @@ class SimpleIntentDetector:
         ]
         
         for part in body_parts:
-            if part in query_lower:
+            pattern = r'\b' + re.escape(part) + r'\b'
+            if re.search(pattern, query_lower):
                 data["location"] = part
                 break
         
@@ -273,7 +298,12 @@ class SimpleIntentDetector:
         
         # Extract treatment name
         for keyword in self.treatment_keywords:
-            if keyword in query_lower:
+            if ' ' in keyword:
+                pattern = re.escape(keyword)
+            else:
+                pattern = r'\b' + re.escape(keyword) + r'\b'
+            
+            if re.search(pattern, query_lower):
                 data["treatment_name"] = keyword
                 break
         
@@ -327,7 +357,8 @@ class SimpleIntentDetector:
         ]
         
         for time_ref in time_references:
-            if time_ref in query_lower:
+            pattern = r'\b' + re.escape(time_ref) + r'\b'
+            if re.search(pattern, query_lower):
                 data["appointment_time"] = time_ref
                 break
         
@@ -338,7 +369,8 @@ class SimpleIntentDetector:
         ]
         
         for apt_type in appointment_types:
-            if apt_type in query_lower:
+            pattern = r'\b' + re.escape(apt_type) + r'\b'
+            if re.search(pattern, query_lower):
                 data["appointment_type"] = apt_type
                 break
         
@@ -349,11 +381,11 @@ class SimpleIntentDetector:
         """Extract what type of history the user is requesting."""
         data = {}
         
-        if "symptom" in query_lower:
+        if re.search(r'\bsymptom', query_lower):
             data["history_type"] = "symptoms"
-        elif "medication" in query_lower or "treatment" in query_lower:
+        elif re.search(r'\b(medication|treatment)', query_lower):
             data["history_type"] = "treatments"
-        elif "appointment" in query_lower or "visit" in query_lower:
+        elif re.search(r'\b(appointment|visit)', query_lower):
             data["history_type"] = "appointments"
         else:
             data["history_type"] = "all"

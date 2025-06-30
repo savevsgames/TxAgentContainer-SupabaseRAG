@@ -102,7 +102,7 @@ class ConversationEngine:
             return await self._handle_history_request(session, extracted_data)
         
         else:
-            # For general conversation, provide a helpful response instead of generic fallback
+            # Enhanced general conversation handling with symptom detection fallback
             return await self._handle_general_conversation(session, message)
 
     async def _handle_post_greeting(self, session, message: str) -> Dict[str, Any]:
@@ -117,14 +117,8 @@ class ConversationEngine:
         if intent in ["symptom", "treatment", "appointment"]:
             return await self._start_data_collection(session, intent, message, extracted_data)
         else:
-            # Provide helpful guidance instead of generic response
-            return {
-                "message": "I can help you track symptoms, medications, or appointments. For example, you could say 'I have a headache' or 'I'm taking ibuprofen' or 'I have a doctor appointment tomorrow'.",
-                "question": None,
-                "session_id": None,
-                "progress": 0,
-                "complete": False
-            }
+            # Enhanced fallback with symptom detection
+            return await self._handle_general_conversation(session, message)
 
     async def _start_data_collection(self, session, intent: str, message: str, extracted_data: Dict[str, Any]) -> Dict[str, Any]:
         """Start data collection for the specified intent."""
@@ -276,25 +270,34 @@ class ConversationEngine:
         }
 
     async def _handle_general_conversation(self, session, message: str) -> Dict[str, Any]:
-        """Handle general conversation with helpful responses."""
+        """Handle general conversation with enhanced symptom detection fallback."""
         logger.info(f"💬 GENERAL: Handling general conversation for user {session.user_id}")
         
         message_lower = message.lower().strip()
+        
+        # Enhanced symptom detection fallback - check for health-related terms
+        health_indicators = [
+            "hurt", "pain", "ache", "sore", "feel", "sick", "unwell", 
+            "symptoms", "headache", "stomach", "back", "chest", "throat",
+            "knee", "shoulder", "arm", "leg", "foot", "hand", "ear", "eye",
+            "tooth", "neck", "fever", "nausea", "tired", "fatigue"
+        ]
+        
+        # Check if the message contains health indicators
+        contains_health_terms = any(
+            re.search(r'\b' + re.escape(term) + r'\b', message_lower) 
+            for term in health_indicators
+        )
+        
+        if contains_health_terms:
+            logger.info(f"🔍 GENERAL: Detected health terms in message, attempting symptom collection")
+            # Force symptom collection even if initial intent detection missed it
+            return await self._start_data_collection(session, "symptom", message, {})
         
         # Check if they're asking about capabilities
         if any(word in message_lower for word in ["what can you do", "help", "how do you work", "what do you do"]):
             return {
                 "message": "I'm Symptom Savior, your health tracking assistant! I can help you:\n\n• Track symptoms (like headaches, pain, fever)\n• Log medications and treatments\n• Schedule and track doctor appointments\n\nJust tell me what you're experiencing, like 'I have a headache' or 'I'm taking ibuprofen'.",
-                "question": None,
-                "session_id": None,
-                "progress": 0,
-                "complete": False
-            }
-        
-        # Check if they're describing a health issue in general terms
-        elif any(word in message_lower for word in ["hurt", "pain", "feel", "sick", "unwell", "ache", "sore"]):
-            return {
-                "message": "It sounds like you might be experiencing some discomfort. I can help you track this as a symptom. Can you tell me more specifically what you're feeling? For example, 'I have a headache' or 'my back hurts'.",
                 "question": None,
                 "session_id": None,
                 "progress": 0,
