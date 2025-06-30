@@ -21,18 +21,12 @@ from llm import LLMHandler
 from core.auth_service import auth_service, get_user_id, get_auth_token, validate_token
 from core.logging import request_logger, log_request
 
-# Import Phase 1 agent awareness components
-from intent_recognition import IntentRecognizer
+# Import Agent Overhaul components
+from conversation_engine import conversation_engine
+from database_manager import database_manager
+
+# Import legacy agent actions for backward compatibility
 from agent_actions import agent_actions
-
-# Import Phase 2 enhanced components
-from nlp_processor import AdvancedNLPProcessor
-from conversation_manager import ConversationManager
-
-# Import tracking components
-from symptom_tracker import symptom_tracker
-from treatment_tracker import treatment_tracker
-from appointment_tracker import appointment_tracker
 
 # Load environment variables
 load_dotenv()
@@ -51,18 +45,19 @@ request_logger.log_system_event("startup", {
     "port": os.getenv("PORT", "8000"),
     "log_level": os.getenv("LOG_LEVEL", "INFO"),
     "agent_awareness": True,
-    "phase": "2.8",
-    "tracking_loops": True
+    "phase": "3.0",
+    "conversation_engine": True,
+    "simple_intent_detection": True
 })
 
 # Initialize FastAPI app
 app = FastAPI(
     title="TxAgent Hybrid Container",
-    description="Medical RAG Vector Uploader with BioBERT embeddings, chat capabilities, and enhanced conversational tracking loops",
+    description="Medical RAG Vector Uploader with BioBERT embeddings, chat capabilities, and conversational health tracking engine",
     version="1.3.0"
 )
 
-# Add CORS middleware with extensive logging
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -74,7 +69,7 @@ app.add_middleware(
 # Initialize services
 try:
     embedder = Embedder()
-    request_logger.log_system_event("model_load", {"status": "success", "model": "BioBERT"})
+    request_logger.log_system_event("model_load", {"status": "success",  "model": "BioBERT"})
 except Exception as e:
     request_logger.log_system_event("model_load", {"status": "failed", "error": str(e)}, level="error")
     raise
@@ -85,24 +80,6 @@ try:
 except Exception as e:
     request_logger.log_system_event("model_load", {"status": "failed", "error": str(e)}, level="warning")
     llm_handler = None
-
-# Initialize Phase 1 intent recognizer
-try:
-    intent_recognizer = IntentRecognizer()
-    request_logger.log_system_event("intent_recognition_load", {"status": "success", "phase": "1"})
-except Exception as e:
-    request_logger.log_system_event("intent_recognition_load", {"status": "failed", "error": str(e)}, level="error")
-    intent_recognizer = None
-
-# Initialize Phase 2 components
-try:
-    nlp_processor = AdvancedNLPProcessor()
-    conversation_manager = ConversationManager()
-    request_logger.log_system_event("phase2_components_load", {"status": "success", "components": ["nlp_processor", "conversation_manager"]})
-except Exception as e:
-    request_logger.log_system_event("phase2_components_load", {"status": "failed", "error": str(e)}, level="error")
-    nlp_processor = None
-    conversation_manager = None
 
 # Track startup time for uptime calculation
 startup_time = time.time()
@@ -147,12 +124,12 @@ class ChatResponse(BaseModel):
     response: str = Field(..., description="Generated response to the query")
     sources: List[Dict[str, Any]] = Field(default=[], description="Source documents used for the response")
     processing_time: Optional[int] = Field(None, description="Processing time in milliseconds")
-    model: str = Field("BioBERT", description="Model used for processing")
+    model: str = Field("Symptom Savior", description="Model used for processing")
     tokens_used: Optional[int] = Field(None, description="Number of tokens used in processing")
     status: str = Field("success", description="Status of the request")
     agent_action: Optional[Dict[str, Any]] = Field(None, description="Agent action taken if any")
     intent_detected: Optional[Dict[str, Any]] = Field(None, description="Intent detection results")
-    conversation_analysis: Optional[Dict[str, Any]] = Field(None, description="Phase 2 conversation analysis")
+    conversation_analysis: Optional[Dict[str, Any]] = Field(None, description="Conversation analysis")
     tracking_session_id: Optional[str] = Field(None, description="ID of tracking session if active")
 
 class AgentSessionRequest(BaseModel):
@@ -315,7 +292,7 @@ def test_rpc(authorization: Optional[str] = Header(None)):
     except Exception as e:
         return {"error": str(e)}
 
-# Agent Action Endpoints for Phase 1 & 2
+# Agent Action Endpoints for backward compatibility
 @app.post("/agent-action/save-symptom")
 async def save_symptom_endpoint(request: Request):
     """Save a symptom to the user's profile."""
@@ -496,9 +473,9 @@ async def chat(
     """
     Generate a response based on a query and document context.
     
-    This endpoint performs similarity search to find relevant documents,
-    then generates a response using an LLM based on the query and context.
-    Enhanced with conversational tracking loops for symptoms, treatments, and appointments.
+    This endpoint uses the conversation engine to handle health tracking
+    through natural dialogue, with fallback to document search for
+    general health information queries.
     """
     logger.info(f"🚀 CHAT REQUEST: {request.query[:50]}...")
     
@@ -527,126 +504,44 @@ async def chat(
         
         start_time = time.time()
         
-        # Check if we're continuing an existing tracking session
-        if request.tracking_session_id:
-            logger.info(f"🔍 CHAT: Continuing tracking session {request.tracking_session_id}")
+        # Process with conversation engine
+        result = await conversation_engine.process_message(user_id, request.query, user_profile)
+        
+        # Check if we need to save data to database
+        if result.get("save_data"):
+            save_data = result["save_data"]
+            save_type = save_data["type"]
+            db_data = save_data["data"]
             
-            # Continue the tracking session
-            tracking_result = conversation_manager.continue_tracking_session(
-                request.tracking_session_id,
-                request.query,
-                user_id
-            )
-            
-            # If session is awaiting confirmation, handle save to database
-            if tracking_result.get("status") == "awaiting_confirmation":
-                confirmation_response = request.query.lower().strip()
-                if confirmation_response in ["yes", "y", "correct", "save", "save it"]:
-                    # Save to database
-                    session_id = request.tracking_session_id
-                    tracking_type = tracking_result.get("tracking_type")
-                    
-                    if tracking_type == "symptom":
-                        save_result = await symptom_tracker.save_to_database(session_id, token)
-                    elif tracking_type == "treatment":
-                        save_result = await treatment_tracker.save_to_database(session_id, token)
-                    elif tracking_type == "appointment":
-                        save_result = await appointment_tracker.save_to_database(session_id, token)
-                    else:
-                        save_result = {"error": "Unknown tracking type"}
-                    
-                    if save_result.get("success"):
-                        final_response = save_result["message"]
-                    else:
-                        final_response = f"I'm sorry, there was an error saving your data: {save_result.get('error', 'Unknown error')}"
-                    
-                    return ChatResponse(
-                        response=final_response,
-                        sources=[],
-                        processing_time=int((time.time() - start_time) * 1000),
-                        model="Symptom Savior",
-                        tokens_used=0,
-                        status="success",
-                        tracking_session_id=None  # Session is complete
-                    )
-                else:
-                    # User wants to make changes
-                    final_response = "What would you like to change about the information I collected?"
-                    
-                    return ChatResponse(
-                        response=final_response,
-                        sources=[],
-                        processing_time=int((time.time() - start_time) * 1000),
-                        model="Symptom Savior",
-                        tokens_used=0,
-                        status="success",
-                        tracking_session_id=request.tracking_session_id
-                    )
+            if save_type == "symptom":
+                save_result = await database_manager.save_symptom(user_id, db_data, token)
+            elif save_type == "treatment":
+                save_result = await database_manager.save_treatment(user_id, db_data, token)
+            elif save_type == "appointment":
+                save_result = await database_manager.save_appointment(user_id, db_data, token)
             else:
-                # Continue with the tracking session
-                final_response = tracking_result["message"]
+                save_result = {"success": False, "error": "Unknown save type"}
+            
+            if not save_result["success"]:
+                result["message"] = f"I'm sorry, there was an error saving your {save_type}: {save_result.get('error', 'Unknown error')}"
+        
+        # Check if we need to retrieve history
+        if result.get("action_needed") == "retrieve_history":
+            history_type = result.get("history_type", "all")
+            history_result = await database_manager.get_user_history(user_id, history_type, token)
+            
+            if history_result["success"]:
+                history_data = history_result["data"]
                 
-                return ChatResponse(
-                    response=final_response,
-                    sources=[],
-                    processing_time=int((time.time() - start_time) * 1000),
-                    model="Symptom Savior",
-                    tokens_used=0,
-                    status="success",
-                    tracking_session_id=tracking_result.get("tracking_session_id")
-                )
+                # Format history data for display
+                formatted_history = self._format_history_data(history_data, history_type)
+                result["message"] = formatted_history
+            else:
+                result["message"] = f"I'm sorry, there was an error retrieving your history: {history_result.get('error', 'Unknown error')}"
         
-        # PHASE 2.8: Enhanced Conversation Management with improved bedside manner
-        conversation_result = None
-        if conversation_manager:
-            logger.info("🔍 CHAT: Using Phase 2.8 enhanced conversation management")
-            # Always pass conversation_history as a list (even if empty)
-            conversation_result = conversation_manager.process_conversation_turn(
-                request.query, 
-                conversation_history,  # This is now guaranteed to be a list
-                user_profile,
-                user_id
-            )
-            logger.info(f"🔍 CHAT: Conversation strategy: {conversation_result.get('strategy', {}).get('type', 'unknown')}")
-        
-        # Handle conversational strategies (no LLM needed)
-        strategy = conversation_result.get("strategy", {}) if conversation_result else {}
-        strategy_type = strategy.get("type", "general_conversation")
-        
-        # For tracking loops, greeting, emergency, and general conversation - use conversation manager response directly
-        if strategy_type in [
-            "symptom_tracking_loop", "treatment_tracking_loop", "appointment_tracking_loop",
-            "greeting", "emergency_response", "general_conversation", "history_request"
-        ]:
-            logger.info(f"🔍 CHAT: Using conversation manager response for strategy: {strategy_type}")
-            
-            response_data = conversation_result.get("response_data", {})
-            final_response = response_data.get("message", "I'm here to help you track your health information.")
-            
-            # Add medical advice if present (but no disclaimer since it's in the UI)
-            medical_advice = response_data.get("medical_advice", "")
-            if medical_advice:
-                final_response += f"\n\n💡 {medical_advice}"
-            
-            # Handle tracking session continuation
-            tracking_session_id = response_data.get("tracking_session_id")
-            
-            return ChatResponse(
-                response=final_response,
-                sources=[],  # No sources for conversational responses
-                processing_time=int((time.time() - start_time) * 1000),
-                model="Symptom Savior",
-                tokens_used=0,
-                status="success",
-                conversation_analysis=conversation_result,
-                tracking_session_id=tracking_session_id
-            )
-        
-        # For health_information strategy - use LLM with conversation manager introduction
-        elif strategy_type == "health_information":
-            logger.info("🔍 CHAT: Using LLM for health information with conversation manager introduction")
-            
-            # Perform similarity search for relevant documents
+        # For health information queries, use document search
+        if not result.get("question") and not result.get("session_id") and "what" in request.query.lower():
+            # This might be a health information query, try document search
             similar_docs = embedder.similarity_search(
                 query=request.query,
                 user_id=user_id,
@@ -654,8 +549,8 @@ async def chat(
                 jwt=token
             )
             
-            if llm_handler and similar_docs:
-                # Generate LLM response
+            if similar_docs and llm_handler:
+                # Generate response using LLM
                 llm_response = await llm_handler.generate_response(
                     query=request.query,
                     context=similar_docs,
@@ -663,100 +558,51 @@ async def chat(
                     user_profile=user_profile,
                     conversation_history=conversation_history
                 )
-                tokens_used = len(llm_response.split())
+                
+                # Combine with conversation engine response
+                result["message"] = f"{result['message']}\n\n{llm_response}"
+                
+                # Format sources for response
+                sources = [
+                    {
+                        "content": doc["content"][:200] + "...",
+                        "metadata": doc["metadata"],
+                        "similarity": doc["similarity"],
+                        "filename": doc.get("filename", "Unknown"),
+                        "chunk_id": f"chunk_{i}",
+                        "page": doc.get("metadata", {}).get("page")
+                    } 
+                    for i, doc in enumerate(similar_docs)
+                ]
             else:
-                llm_response = "I don't have specific information about that in your documents."
-                tokens_used = 0
-            
-            # Combine conversation manager introduction with LLM response
-            response_data = conversation_result.get("response_data", {})
-            intro_message = response_data.get("message", "")
-            
-            if intro_message:
-                final_response = f"{intro_message}\n\n{llm_response}"
-            else:
-                final_response = llm_response
-            
-            # Add follow-up question if present
-            follow_up_questions = response_data.get("follow_up_questions", [])
-            if follow_up_questions:
-                final_response += f"\n\n❓ {follow_up_questions[0]}"
-            
-            # Format sources for response (but suppress for conversational responses)
-            sources = [
-                {
-                    "content": doc["content"][:200] + "...",
-                    "metadata": doc["metadata"],
-                    "similarity": doc["similarity"],
-                    "filename": doc.get("filename", "Unknown"),
-                    "chunk_id": f"chunk_{i}",
-                    "page": doc.get("metadata", {}).get("page")
-                } 
-                for i, doc in enumerate(similar_docs)
-            ]
-            
-            return ChatResponse(
-                response=final_response,
-                sources=sources,
-                processing_time=int((time.time() - start_time) * 1000),
-                model="Symptom Savior",
-                tokens_used=tokens_used,
-                status="success",
-                conversation_analysis=conversation_result
-            )
-        
-        # Fallback to Phase 1 behavior for unknown strategies
+                sources = []
         else:
-            logger.info("🔍 CHAT: Falling back to Phase 1 behavior")
-            
-            # Perform similarity search
-            similar_docs = embedder.similarity_search(
-                query=request.query,
-                user_id=user_id,
-                top_k=request.top_k,
-                jwt=token
-            )
-            
-            if not similar_docs:
-                base_response = "I couldn't find any relevant information to answer your question. Please make sure you have uploaded some documents first."
-                tokens_used = 0
-            else:
-                # Generate response using LLM if available
-                if llm_handler:
-                    response = await llm_handler.generate_response(
-                        query=request.query,
-                        context=similar_docs,
-                        temperature=request.temperature,
-                        user_profile=user_profile,
-                        conversation_history=conversation_history
-                    )
-                    tokens_used = len(response.split())
-                    base_response = response
-                else:
-                    base_response = f"Based on the documents I found, here's relevant information: {similar_docs[0]['content'][:200]}..."
-                    tokens_used = len(base_response.split())
-            
-            # Format sources for response
-            sources = [
-                {
-                    "content": doc["content"][:200] + "...",
-                    "metadata": doc["metadata"],
-                    "similarity": doc["similarity"],
-                    "filename": doc.get("filename", "Unknown"),
-                    "chunk_id": f"chunk_{i}",
-                    "page": doc.get("metadata", {}).get("page")
-                } 
-                for i, doc in enumerate(similar_docs)
-            ]
-            
-            return ChatResponse(
-                response=base_response,
-                sources=sources,
-                processing_time=int((time.time() - start_time) * 1000),
-                model="Symptom Savior",
-                tokens_used=tokens_used,
-                status="success"
-            )
+            sources = []
+        
+        # Combine message and question for response
+        final_response = result["message"]
+        if result.get("question"):
+            final_response += f"\n\n❓ {result['question']}"
+        
+        # Add summary if available
+        if result.get("summary"):
+            final_response += f"\n\n{result['summary']}"
+        
+        processing_time = int((time.time() - start_time) * 1000)
+        
+        return ChatResponse(
+            response=final_response,
+            sources=sources,
+            processing_time=processing_time,
+            model="Symptom Savior",
+            tokens_used=0,  # No tokens used for conversation engine
+            status="success",
+            tracking_session_id=result.get("session_id"),
+            conversation_analysis={
+                "progress": result.get("progress", 0),
+                "complete": result.get("complete", False)
+            }
+        )
         
     except HTTPException as e:
         logger.error(f"❌ HTTP error in chat endpoint: {e.detail}")
@@ -765,6 +611,39 @@ async def chat(
     except Exception as e:
         logger.error(f"❌ Unexpected error in chat endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error generating response: {str(e)}")
+
+    def _format_history_data(self, history_data: Dict[str, List[Dict[str, Any]]], history_type: str) -> str:
+        """Format history data for display."""
+        formatted = []
+        
+        if history_type in ["all", "symptoms"] and history_data.get("symptoms"):
+            symptoms = history_data["symptoms"]
+            formatted.append(f"**Symptoms** ({len(symptoms)})")
+            for i, symptom in enumerate(symptoms[:5]):  # Show top 5
+                created_at = datetime.fromisoformat(symptom["created_at"].replace("Z", "+00:00"))
+                formatted_date = created_at.strftime("%b %d, %Y")
+                formatted.append(f"{i+1}. {symptom['symptom_name'].title()} - Severity: {symptom['severity']}/10 ({formatted_date})")
+        
+        if history_type in ["all", "treatments"] and history_data.get("treatments"):
+            treatments = history_data["treatments"]
+            formatted.append(f"\n**Treatments** ({len(treatments)})")
+            for i, treatment in enumerate(treatments[:5]):  # Show top 5
+                created_at = datetime.fromisoformat(treatment["created_at"].replace("Z", "+00:00"))
+                formatted_date = created_at.strftime("%b %d, %Y")
+                formatted.append(f"{i+1}. {treatment['name'].title()} - {treatment.get('dosage', 'No dosage')} ({formatted_date})")
+        
+        if history_type in ["all", "appointments"] and history_data.get("appointments"):
+            appointments = history_data["appointments"]
+            formatted.append(f"\n**Appointments** ({len(appointments)})")
+            for i, appointment in enumerate(appointments[:5]):  # Show top 5
+                visit_ts = datetime.fromisoformat(appointment["visit_ts"].replace("Z", "+00:00"))
+                formatted_date = visit_ts.strftime("%b %d, %Y at %I:%M %p")
+                formatted.append(f"{i+1}. {appointment['doctor_name']} - {formatted_date}")
+        
+        if not formatted:
+            return "I don't see any health records in your history yet. You can start tracking by telling me about symptoms, treatments, or appointments."
+        
+        return "\n".join(formatted)
 
 # Agent session management endpoints using centralized auth service
 @app.post("/agents", response_model=AgentSessionResponse)
@@ -975,18 +854,13 @@ async def health_check(
             "user_context_support": True,
             "conversation_history_support": True,
             "agent_awareness": True,
-            "intent_recognition": intent_recognizer is not None,
             "symptom_tracking": True,
             "treatment_tracking": True,
             "appointment_tracking": True,
             "conversational_loops": True,
-            "phase1_features": True,
-            "phase2_features": nlp_processor is not None and conversation_manager is not None,
-            "phase2_8_enhanced_conversation": nlp_processor is not None and conversation_manager is not None,
-            "advanced_nlp": nlp_processor is not None,
-            "conversation_management": conversation_manager is not None,
+            "simple_intent_detection": True,
+            "conversation_engine": True,
             "improved_bedside_manner": True,
-            "llm_suppression": True,
             "tracking_session_management": True
         }
     }
@@ -1039,9 +913,11 @@ async def health_check(
         "status": "healthy",
         "session_id": x_session_id,
         "session_updated": health_data.get("session_updated", False),
-        "phase2_features": health_data["capabilities"]["phase2_features"],
-        "phase2_8_enhanced": health_data["capabilities"]["phase2_8_enhanced_conversation"],
-        "tracking_loops": health_data["capabilities"]["conversational_loops"]
+        "conversation_engine": health_data["capabilities"]["conversation_engine"],
+        "simple_intent_detection": health_data["capabilities"]["simple_intent_detection"]
     })
     
     return health_data
+
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
