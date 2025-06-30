@@ -82,6 +82,11 @@ class ConversationManager:
                 "general": "For toothaches, rinsing with warm salt water and over-the-counter pain relievers may provide temporary relief.",
                 "severe": "Severe tooth pain may indicate an infection or serious dental issue that requires prompt dental care.",
                 "chronic": "Persistent tooth pain should be evaluated by a dentist as soon as possible."
+            },
+            "sore throat": {
+                "general": "For sore throats, warm salt water gargles, throat lozenges, and staying hydrated can provide relief.",
+                "severe": "Severe sore throat with difficulty swallowing or breathing may require medical attention.",
+                "chronic": "Persistent sore throat lasting more than a few days should be evaluated by a healthcare provider."
             }
         }
 
@@ -105,15 +110,18 @@ class ConversationManager:
             Conversation processing result with response strategy
         """
         logger.info(f"🔍 CONVERSATION: Processing turn: {query[:100]}...")
+        logger.info(f"🔍 CONVERSATION: Conversation history length: {len(conversation_history)}")
         
         # Analyze conversation flow
         flow_analysis = self.nlp_processor.analyze_conversation_flow(query, conversation_history)
         
         # Extract comprehensive data (symptoms, treatments, appointments)
         extracted_data = self.nlp_processor.extract_comprehensive_symptom_data(query, conversation_history)
+        logger.info(f"🔍 CONVERSATION: Extracted data: {extracted_data}")
         
         # Determine conversation strategy with improved logic - prioritize tracking intents
-        strategy = self._determine_conversation_strategy(flow_analysis, extracted_data, user_profile, query)
+        strategy = self._determine_conversation_strategy(flow_analysis, extracted_data, user_profile, query, conversation_history)
+        logger.info(f"🔍 CONVERSATION: Strategy determined: {strategy}")
         
         # Generate appropriate response based on strategy
         if strategy.get("type") in ["symptom_tracking_loop", "treatment_tracking_loop", "appointment_tracking_loop"]:
@@ -140,7 +148,8 @@ class ConversationManager:
         flow_analysis: Dict[str, Any], 
         extracted_data: Dict[str, Any], 
         user_profile: Optional[Dict[str, Any]],
-        query: str
+        query: str,
+        conversation_history: List[Dict[str, str]]
     ) -> Dict[str, Any]:
         """Determine the appropriate conversation strategy with improved bedside manner and prioritized tracking."""
         
@@ -153,27 +162,40 @@ class ConversationManager:
         
         query_lower = query.lower()
         
+        logger.info(f"🔍 STRATEGY: Analyzing query: '{query}'")
+        logger.info(f"🔍 STRATEGY: Extracted symptom name: {extracted_data.get('symptom_name')}")
+        
         # 1. EMERGENCY DETECTION (Highest Priority)
         if self._detect_emergency_indicators(extracted_data, user_profile):
             strategy["type"] = "emergency_response"
             strategy["action"] = "alert_emergency"
             strategy["priority"] = "critical"
             strategy["confidence"] = 0.95
+            logger.info("🔍 STRATEGY: Emergency detected")
             return strategy
         
-        # 2. TRACKING INTENT DETECTION (High Priority - moved up)
+        # 2. TRACKING INTENT DETECTION (High Priority - enhanced)
         tracking_type = self._detect_tracking_intent(query_lower, extracted_data)
+        logger.info(f"🔍 STRATEGY: Tracking type detected: {tracking_type}")
         if tracking_type:
             strategy["type"] = f"{tracking_type}_tracking_loop"
             strategy["action"] = f"start_{tracking_type}_tracking"
             strategy["confidence"] = 0.9
             strategy["priority"] = "high"
+            logger.info(f"🔍 STRATEGY: Starting {tracking_type} tracking loop")
             return strategy
         
-        # 3. GREETING DETECTION
-        if self._is_greeting(query_lower):
+        # 3. GREETING DETECTION (but check conversation history first!)
+        if self._is_greeting(query_lower) and not self._has_recent_greeting(conversation_history):
             strategy["type"] = "greeting"
             strategy["confidence"] = 0.9
+            logger.info("🔍 STRATEGY: Greeting detected (no recent greeting in history)")
+            return strategy
+        elif self._is_greeting(query_lower) and self._has_recent_greeting(conversation_history):
+            # User said hi again, but we already greeted - treat as general conversation
+            strategy["type"] = "general_conversation"
+            strategy["confidence"] = 0.8
+            logger.info("🔍 STRATEGY: Greeting detected but already greeted - treating as general conversation")
             return strategy
         
         # 4. HISTORY REQUESTS
@@ -182,6 +204,7 @@ class ConversationManager:
             strategy["action"] = "get_history"
             strategy["confidence"] = 0.9
             strategy["priority"] = "high"
+            logger.info("🔍 STRATEGY: History request detected")
             return strategy
         
         # 5. GENERAL HEALTH INFORMATION
@@ -189,26 +212,32 @@ class ConversationManager:
             strategy["type"] = "health_information"
             strategy["confidence"] = 0.8
             strategy["priority"] = "normal"
+            logger.info("🔍 STRATEGY: General health question detected")
             return strategy
         
         # 6. GENERAL CONVERSATION (Default)
         strategy["type"] = "general_conversation"
         strategy["confidence"] = 0.6
         strategy["priority"] = "normal"
+        logger.info("🔍 STRATEGY: Defaulting to general conversation")
         
         return strategy
 
     def _detect_tracking_intent(self, query_lower: str, extracted_data: Dict[str, Any]) -> Optional[str]:
         """Detect what type of tracking the user wants to do - enhanced to catch more symptom mentions."""
         
-        # Enhanced symptom tracking indicators
+        logger.info(f"🔍 TRACKING_INTENT: Analyzing query: '{query_lower}'")
+        logger.info(f"🔍 TRACKING_INTENT: Extracted symptom name: {extracted_data.get('symptom_name')}")
+        
+        # Enhanced symptom tracking indicators - comprehensive list
         symptom_indicators = [
             "symptom", "pain", "hurt", "ache", "feel", "experiencing", "having",
             "headache", "fever", "nausea", "dizziness", "fatigue", "sick", "unwell",
             "toothache", "earache", "sore throat", "stomach ache", "back pain",
             "chest pain", "joint pain", "muscle ache", "heartburn", "constipation",
             "diarrhea", "vomiting", "bloating", "cramps", "weakness", "stiffness",
-            "burning", "itching", "rash", "swelling", "bruising", "numbness", "tingling"
+            "burning", "itching", "rash", "swelling", "bruising", "numbness", "tingling",
+            "runny nose", "congestion", "cough", "sneezing", "migraine", "cold", "flu"
         ]
         
         # Treatment/medication tracking indicators
@@ -227,32 +256,47 @@ class ConversationManager:
         tracking_actions = ["log", "track", "record", "save", "add", "note"]
         
         has_tracking_action = any(action in query_lower for action in tracking_actions)
+        logger.info(f"🔍 TRACKING_INTENT: Has tracking action: {has_tracking_action}")
         
         # Check for explicit tracking requests
-        if has_tracking_action or "i have" in query_lower or "i'm taking" in query_lower:
+        if has_tracking_action or "i have" in query_lower or "i'm taking" in query_lower or "i've got" in query_lower:
             if any(indicator in query_lower for indicator in appointment_indicators):
+                logger.info("🔍 TRACKING_INTENT: Explicit appointment tracking detected")
                 return "appointment"
             elif any(indicator in query_lower for indicator in treatment_indicators):
+                logger.info("🔍 TRACKING_INTENT: Explicit treatment tracking detected")
                 return "treatment"
             elif any(indicator in query_lower for indicator in symptom_indicators):
+                logger.info("🔍 TRACKING_INTENT: Explicit symptom tracking detected")
                 return "symptom"
         
         # Enhanced implicit detection - if symptom name is extracted, likely wants to track it
         if extracted_data.get("symptom_name"):
+            logger.info(f"🔍 TRACKING_INTENT: Symptom name extracted: {extracted_data.get('symptom_name')} - starting symptom tracking")
             return "symptom"
         
-        # Check for implicit mentions with context
-        if any(indicator in query_lower for indicator in symptom_indicators):
+        # Check for implicit mentions with context - be more aggressive about symptom detection
+        symptom_found = None
+        for indicator in symptom_indicators:
+            if indicator in query_lower:
+                symptom_found = indicator
+                break
+        
+        if symptom_found:
+            logger.info(f"🔍 TRACKING_INTENT: Symptom indicator found: {symptom_found} - starting symptom tracking")
             return "symptom"
         
         # Check for medication names or treatment context
         if any(indicator in query_lower for indicator in treatment_indicators):
+            logger.info("🔍 TRACKING_INTENT: Treatment indicator found - starting treatment tracking")
             return "treatment"
         
         # Check for appointment context
         if any(indicator in query_lower for indicator in appointment_indicators):
+            logger.info("🔍 TRACKING_INTENT: Appointment indicator found - starting appointment tracking")
             return "appointment"
         
+        logger.info("🔍 TRACKING_INTENT: No tracking intent detected")
         return None
 
     def _is_greeting(self, query_lower: str) -> bool:
@@ -262,6 +306,27 @@ class ConversationManager:
             "how are you", "what's up", "greetings"
         ]
         return any(greeting in query_lower for greeting in greetings)
+
+    def _has_recent_greeting(self, conversation_history: List[Dict[str, str]]) -> bool:
+        """Check if there was a recent greeting in the conversation history."""
+        if not conversation_history:
+            return False
+        
+        # Check the last few assistant messages for greeting patterns
+        recent_messages = conversation_history[-4:]  # Check last 4 messages
+        
+        for message in recent_messages:
+            if message.get("role") == "assistant":
+                content = message.get("content", "").lower()
+                greeting_patterns = [
+                    "hello", "hi", "how can i help", "i'm here to help",
+                    "track symptoms", "track medications", "track appointments"
+                ]
+                if any(pattern in content for pattern in greeting_patterns):
+                    logger.info(f"🔍 GREETING_CHECK: Found recent greeting in: {content[:50]}...")
+                    return True
+        
+        return False
 
     def _handle_tracking_loop(
         self, 
@@ -414,7 +479,7 @@ class ConversationManager:
         query_lower = original_query.lower()
         
         # Try to identify the health topic
-        health_topics = ["cold", "flu", "fever", "headache", "pain", "medication", "treatment", "symptoms", "toothache"]
+        health_topics = ["cold", "flu", "fever", "headache", "pain", "medication", "treatment", "symptoms", "toothache", "sore throat"]
         for topic_word in health_topics:
             if topic_word in query_lower:
                 topic = topic_word
