@@ -189,6 +189,7 @@ class ConversationEngine:
     async def _handle_confirmation(self, session, message: str) -> Dict[str, Any]:
         """Handle user confirmation of collected data."""
         logger.info(f"✅ CONFIRMATION: Handling confirmation for user {session.user_id}")
+        logger.info(f"✅ CONFIRMATION: Message: '{message}'")
         
         message_lower = message.lower().strip()
         
@@ -197,8 +198,8 @@ class ConversationEngine:
             session.update_state(ConversationState.SAVING_DATA)
             return await self._save_data_to_database(session)
         
-        # Check for negative confirmation or changes
-        elif any(word in message_lower for word in ["no", "n", "wrong", "change", "incorrect"]):
+        # Check for explicit negative confirmation
+        elif any(word in message_lower for word in ["no", "n", "wrong", "incorrect"]) and not self._contains_correction_data(message):
             # Reset to data collection state to handle corrections
             if session.current_collector == "symptom":
                 session.update_state(ConversationState.COLLECTING_SYMPTOM)
@@ -210,18 +211,87 @@ class ConversationEngine:
             # Clear questions asked to allow re-collection
             session.questions_asked = []
             
-            # Process the correction message through data collection
-            return await self._handle_data_collection(session, message)
-        
-        else:
-            # Unclear response, ask again
             return {
-                "message": "I didn't understand. Please say 'yes' to save this information or tell me what you'd like to change.",
+                "message": "What would you like to change? Please tell me the correct information.",
                 "question": None,
                 "session_id": f"{session.current_collector}_{session.user_id}_{int(session.created_at.timestamp())}",
                 "progress": session.completion_progress,
                 "complete": False
             }
+        
+        # Check if the message contains correction data (numbers, time references, etc.)
+        elif self._contains_correction_data(message):
+            logger.info(f"✅ CONFIRMATION: Detected correction data in message")
+            
+            # Process the correction through the collector
+            collector = self.collectors[session.current_collector]
+            
+            # Extract corrections from the message
+            correction_data = self._extract_correction_data(message, session.current_collector)
+            
+            if correction_data:
+                # Update session data with corrections
+                session.update_data(correction_data)
+                
+                # Generate new confirmation with updated data
+                result = collector._generate_completion(session.collected_data)
+                
+                return {
+                    "message": result["message"],
+                    "summary": result["summary"],
+                    "question": result["question"],
+                    "session_id": f"{session.current_collector}_{session.user_id}_{int(session.created_at.timestamp())}",
+                    "progress": result["progress"],
+                    "complete": result["complete"]
+                }
+        
+        # Unclear response, ask again
+        return {
+            "message": "I didn't understand. Please say 'yes' to save this information or tell me what you'd like to change.",
+            "question": None,
+            "session_id": f"{session.current_collector}_{session.user_id}_{int(session.created_at.timestamp())}",
+            "progress": session.completion_progress,
+            "complete": False
+        }
+
+    def _contains_correction_data(self, message: str) -> bool:
+        """Check if message contains correction data like numbers, time references, etc."""
+        message_lower = message.lower()
+        
+        # Check for numbers (severity, duration)
+        if re.search(r'\b\d+\b', message_lower):
+            return True
+        
+        # Check for time references
+        time_indicators = ["hour", "day", "week", "month", "morning", "afternoon", "evening", "yesterday", "today", "tomorrow"]
+        if any(word in message_lower for word in time_indicators):
+            return True
+        
+        # Check for location/body part references
+        body_parts = ["head", "neck", "back", "chest", "stomach", "arm", "leg", "knee", "shoulder"]
+        if any(word in message_lower for word in body_parts):
+            return True
+        
+        # Check for medication/dosage references
+        dosage_indicators = ["mg", "tablet", "pill", "capsule", "times", "daily", "twice", "once"]
+        if any(word in message_lower for word in dosage_indicators):
+            return True
+        
+        return False
+
+    def _extract_correction_data(self, message: str, collector_type: str) -> Dict[str, Any]:
+        """Extract correction data from user message."""
+        logger.info(f"🔧 EXTRACT_CORRECTION: Extracting corrections from '{message}' for {collector_type}")
+        
+        collector = self.collectors[collector_type]
+        
+        # Use the collector's extraction method to get the corrections
+        if hasattr(collector, '_extract_from_response'):
+            corrections = collector._extract_from_response(message, {}, [])
+            logger.info(f"🔧 EXTRACT_CORRECTION: Found corrections: {corrections}")
+            return corrections
+        
+        return {}
 
     async def _save_data_to_database(self, session) -> Dict[str, Any]:
         """Save collected data to database."""
