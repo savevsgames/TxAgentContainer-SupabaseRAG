@@ -505,7 +505,9 @@ async def chat(
         start_time = time.time()
         
         # Process with conversation engine
+        logger.info(f"🔍 CHAT: Processing with conversation engine for user {user_id}")
         result = await conversation_engine.process_message(user_id, request.query, user_profile)
+        logger.info(f"🔍 CHAT: Conversation engine result: {result}")
         
         # Check if we need to save data to database
         if result.get("save_data"):
@@ -539,42 +541,49 @@ async def chat(
             else:
                 result["message"] = f"I'm sorry, there was an error retrieving your history: {history_result.get('error', 'Unknown error')}"
         
-        # For health information queries, use document search
+        # For health information queries that aren't handled by conversation engine, use document search
         if not result.get("question") and not result.get("session_id") and "what" in request.query.lower():
-            # This might be a health information query, try document search
-            similar_docs = embedder.similarity_search(
-                query=request.query,
-                user_id=user_id,
-                top_k=request.top_k,
-                jwt=token
-            )
-            
-            if similar_docs and llm_handler:
-                # Generate response using LLM
-                llm_response = await llm_handler.generate_response(
+            logger.info("🔍 CHAT: Attempting document search for health information query")
+            try:
+                # This might be a health information query, try document search
+                similar_docs = embedder.similarity_search(
                     query=request.query,
-                    context=similar_docs,
-                    temperature=request.temperature,
-                    user_profile=user_profile,
-                    conversation_history=conversation_history
+                    user_id=user_id,
+                    top_k=request.top_k,
+                    jwt=token
                 )
                 
-                # Combine with conversation engine response
-                result["message"] = f"{result['message']}\n\n{llm_response}"
-                
-                # Format sources for response
-                sources = [
-                    {
-                        "content": doc["content"][:200] + "...",
-                        "metadata": doc["metadata"],
-                        "similarity": doc["similarity"],
-                        "filename": doc.get("filename", "Unknown"),
-                        "chunk_id": f"chunk_{i}",
-                        "page": doc.get("metadata", {}).get("page")
-                    } 
-                    for i, doc in enumerate(similar_docs)
-                ]
-            else:
+                if similar_docs and llm_handler:
+                    logger.info(f"🔍 CHAT: Found {len(similar_docs)} similar documents, generating LLM response")
+                    # Generate response using LLM
+                    llm_response = await llm_handler.generate_response(
+                        query=request.query,
+                        context=similar_docs,
+                        temperature=request.temperature,
+                        user_profile=user_profile,
+                        conversation_history=conversation_history
+                    )
+                    
+                    # Combine with conversation engine response
+                    result["message"] = f"{result['message']}\n\n{llm_response}"
+                    
+                    # Format sources for response
+                    sources = [
+                        {
+                            "content": doc["content"][:200] + "...",
+                            "metadata": doc["metadata"],
+                            "similarity": doc["similarity"],
+                            "filename": doc.get("filename", "Unknown"),
+                            "chunk_id": f"chunk_{i}",
+                            "page": doc.get("metadata", {}).get("page")
+                        } 
+                        for i, doc in enumerate(similar_docs)
+                    ]
+                else:
+                    logger.info("🔍 CHAT: No similar documents found or LLM handler unavailable")
+                    sources = []
+            except Exception as e:
+                logger.error(f"❌ CHAT: Error in document search: {str(e)}")
                 sources = []
         else:
             sources = []
@@ -589,6 +598,8 @@ async def chat(
             final_response += f"\n\n{result['summary']}"
         
         processing_time = int((time.time() - start_time) * 1000)
+        
+        logger.info(f"✅ CHAT: Generated final response ({len(final_response)} chars) in {processing_time}ms")
         
         return ChatResponse(
             response=final_response,
@@ -612,38 +623,38 @@ async def chat(
         logger.error(f"❌ Unexpected error in chat endpoint: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error generating response: {str(e)}")
 
-    def _format_history_data(self, history_data: Dict[str, List[Dict[str, Any]]], history_type: str) -> str:
-        """Format history data for display."""
-        formatted = []
-        
-        if history_type in ["all", "symptoms"] and history_data.get("symptoms"):
-            symptoms = history_data["symptoms"]
-            formatted.append(f"**Symptoms** ({len(symptoms)})")
-            for i, symptom in enumerate(symptoms[:5]):  # Show top 5
-                created_at = datetime.fromisoformat(symptom["created_at"].replace("Z", "+00:00"))
-                formatted_date = created_at.strftime("%b %d, %Y")
-                formatted.append(f"{i+1}. {symptom['symptom_name'].title()} - Severity: {symptom['severity']}/10 ({formatted_date})")
-        
-        if history_type in ["all", "treatments"] and history_data.get("treatments"):
-            treatments = history_data["treatments"]
-            formatted.append(f"\n**Treatments** ({len(treatments)})")
-            for i, treatment in enumerate(treatments[:5]):  # Show top 5
-                created_at = datetime.fromisoformat(treatment["created_at"].replace("Z", "+00:00"))
-                formatted_date = created_at.strftime("%b %d, %Y")
-                formatted.append(f"{i+1}. {treatment['name'].title()} - {treatment.get('dosage', 'No dosage')} ({formatted_date})")
-        
-        if history_type in ["all", "appointments"] and history_data.get("appointments"):
-            appointments = history_data["appointments"]
-            formatted.append(f"\n**Appointments** ({len(appointments)})")
-            for i, appointment in enumerate(appointments[:5]):  # Show top 5
-                visit_ts = datetime.fromisoformat(appointment["visit_ts"].replace("Z", "+00:00"))
-                formatted_date = visit_ts.strftime("%b %d, %Y at %I:%M %p")
-                formatted.append(f"{i+1}. {appointment['doctor_name']} - {formatted_date}")
-        
-        if not formatted:
-            return "I don't see any health records in your history yet. You can start tracking by telling me about symptoms, treatments, or appointments."
-        
-        return "\n".join(formatted)
+def _format_history_data(history_data: Dict[str, List[Dict[str, Any]]], history_type: str) -> str:
+    """Format history data for display."""
+    formatted = []
+    
+    if history_type in ["all", "symptoms"] and history_data.get("symptoms"):
+        symptoms = history_data["symptoms"]
+        formatted.append(f"**Symptoms** ({len(symptoms)})")
+        for i, symptom in enumerate(symptoms[:5]):  # Show top 5
+            created_at = datetime.fromisoformat(symptom["created_at"].replace("Z", "+00:00"))
+            formatted_date = created_at.strftime("%b %d, %Y")
+            formatted.append(f"{i+1}. {symptom['symptom_name'].title()} - Severity: {symptom['severity']}/10 ({formatted_date})")
+    
+    if history_type in ["all", "treatments"] and history_data.get("treatments"):
+        treatments = history_data["treatments"]
+        formatted.append(f"\n**Treatments** ({len(treatments)})")
+        for i, treatment in enumerate(treatments[:5]):  # Show top 5
+            created_at = datetime.fromisoformat(treatment["created_at"].replace("Z", "+00:00"))
+            formatted_date = created_at.strftime("%b %d, %Y")
+            formatted.append(f"{i+1}. {treatment['name'].title()} - {treatment.get('dosage', 'No dosage')} ({formatted_date})")
+    
+    if history_type in ["all", "appointments"] and history_data.get("appointments"):
+        appointments = history_data["appointments"]
+        formatted.append(f"\n**Appointments** ({len(appointments)})")
+        for i, appointment in enumerate(appointments[:5]):  # Show top 5
+            visit_ts = datetime.fromisoformat(appointment["visit_ts"].replace("Z", "+00:00"))
+            formatted_date = visit_ts.strftime("%b %d, %Y at %I:%M %p")
+            formatted.append(f"{i+1}. {appointment['doctor_name']} - {formatted_date}")
+    
+    if not formatted:
+        return "I don't see any health records in your history yet. You can start tracking by telling me about symptoms, treatments, or appointments."
+    
+    return "\n".join(formatted)
 
 # Agent session management endpoints using centralized auth service
 @app.post("/agents", response_model=AgentSessionResponse)

@@ -102,14 +102,8 @@ class ConversationEngine:
             return await self._handle_history_request(session, extracted_data)
         
         else:
-            # General conversation
-            return {
-                "message": "I can help you track symptoms, medications, or appointments. What would you like to log?",
-                "question": None,
-                "session_id": None,
-                "progress": 0,
-                "complete": False
-            }
+            # For general conversation, provide a helpful response instead of generic fallback
+            return await self._handle_general_conversation(session, message)
 
     async def _handle_post_greeting(self, session, message: str) -> Dict[str, Any]:
         """Handle message after greeting."""
@@ -123,8 +117,9 @@ class ConversationEngine:
         if intent in ["symptom", "treatment", "appointment"]:
             return await self._start_data_collection(session, intent, message, extracted_data)
         else:
+            # Provide helpful guidance instead of generic response
             return {
-                "message": "I can help you track symptoms, medications, or appointments. What would you like to log?",
+                "message": "I can help you track symptoms, medications, or appointments. For example, you could say 'I have a headache' or 'I'm taking ibuprofen' or 'I have a doctor appointment tomorrow'.",
                 "question": None,
                 "session_id": None,
                 "progress": 0,
@@ -280,17 +275,67 @@ class ConversationEngine:
             "history_type": history_type
         }
 
+    async def _handle_general_conversation(self, session, message: str) -> Dict[str, Any]:
+        """Handle general conversation with helpful responses."""
+        logger.info(f"💬 GENERAL: Handling general conversation for user {session.user_id}")
+        
+        message_lower = message.lower().strip()
+        
+        # Check if they're asking about capabilities
+        if any(word in message_lower for word in ["what can you do", "help", "how do you work", "what do you do"]):
+            return {
+                "message": "I'm Symptom Savior, your health tracking assistant! I can help you:\n\n• Track symptoms (like headaches, pain, fever)\n• Log medications and treatments\n• Schedule and track doctor appointments\n\nJust tell me what you're experiencing, like 'I have a headache' or 'I'm taking ibuprofen'.",
+                "question": None,
+                "session_id": None,
+                "progress": 0,
+                "complete": False
+            }
+        
+        # Check if they're describing a health issue in general terms
+        elif any(word in message_lower for word in ["hurt", "pain", "feel", "sick", "unwell", "ache", "sore"]):
+            return {
+                "message": "It sounds like you might be experiencing some discomfort. I can help you track this as a symptom. Can you tell me more specifically what you're feeling? For example, 'I have a headache' or 'my back hurts'.",
+                "question": None,
+                "session_id": None,
+                "progress": 0,
+                "complete": False
+            }
+        
+        # Check if they're asking about medication
+        elif any(word in message_lower for word in ["medicine", "medication", "pill", "drug", "taking"]):
+            return {
+                "message": "I can help you track medications and treatments. Just tell me what you're taking, like 'I'm taking ibuprofen' or 'I started a new medication'.",
+                "question": None,
+                "session_id": None,
+                "progress": 0,
+                "complete": False
+            }
+        
+        # Check if they're asking about appointments
+        elif any(word in message_lower for word in ["doctor", "appointment", "visit", "checkup"]):
+            return {
+                "message": "I can help you track doctor appointments and visits. Just tell me about your appointment, like 'I have a doctor appointment tomorrow' or 'I saw Dr. Smith today'.",
+                "question": None,
+                "session_id": None,
+                "progress": 0,
+                "complete": False
+            }
+        
+        # Default helpful response
+        else:
+            return {
+                "message": "I'm here to help you track your health information. You can tell me about symptoms you're experiencing, medications you're taking, or doctor appointments you have. What would you like to track today?",
+                "question": None,
+                "session_id": None,
+                "progress": 0,
+                "complete": False
+            }
+
     async def _handle_general_response(self, session, message: str) -> Dict[str, Any]:
         """Handle general conversation."""
         logger.info(f"💬 GENERAL: Handling general response for user {session.user_id}")
         
-        return {
-            "message": "I'm here to help with your health tracking. I can help you log symptoms, medications, or appointments. What would you like to track?",
-            "question": None,
-            "session_id": None,
-            "progress": 0,
-            "complete": False
-        }
+        return await self._handle_general_conversation(session, message)
 
     def _determine_question_type(self, question: str) -> str:
         """Determine what type of question is being asked."""
